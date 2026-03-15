@@ -1,0 +1,171 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Fields: firstName, lastName, email, phone, role, profilePic, status, isAdmin
+    //
+    // Collection: customers
+    // Fields: name, orgNumber, address, city, zipCode, contactPerson, contactPhone, responsibleSeller, website, services
+    //
+    // Collection: customers/{customerId}/users
+    // Fields: firstName, lastName, email, phone, role, office, isAuthorizedBuyer
+    //
+    // Collection: news
+    // Fields: title, content, imageUrl, authorId, createdAt, updatedAt
+    //
+    // [Other collections follow similar patterns]
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == 1 ||
+        (request.auth.token.email == "luisvidal74@gmail.com" && request.auth.token.email_verified == true)
+      );
+    }
+
+    function isSupport() {
+      return isAuthenticated() && (
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'Support' ||
+        isAdmin()
+      );
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    // Domain Validators
+    function isValidUser(data) {
+      return hasOnlyAllowedFields(['firstName', 'lastName', 'email', 'phone', 'role', 'profilePic', 'status', 'isAdmin']) &&
+             data.firstName is string && data.firstName.size() > 0 && data.firstName.size() < 100 &&
+             data.lastName is string && data.lastName.size() > 0 && data.lastName.size() < 100 &&
+             data.email is string && isValidEmail(data.email) &&
+             data.role is string &&
+             (data.status in ['pending', 'approved', 'rejected']) &&
+             data.isAdmin is int;
+    }
+
+    function isValidCustomer(data) {
+      return hasOnlyAllowedFields(['name', 'orgNumber', 'address', 'city', 'zipCode', 'contactPerson', 'contactPhone', 'responsibleSeller', 'website', 'services']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 200 &&
+             data.orgNumber is string && data.orgNumber.size() > 0 && data.orgNumber.size() < 50;
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Users collection
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidUser(request.resource.data) && 
+                    (isOwner(userId) || isAdmin());
+      allow update: if isAuthenticated() && isValidUser(request.resource.data) && 
+                    ((isOwner(userId) && request.resource.data.isAdmin == resource.data.isAdmin && request.resource.data.role == resource.data.role) || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    // Customers collection
+    match /customers/{customerId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidCustomer(request.resource.data) && (isAdmin() || isSupport());
+      allow update: if isAuthenticated() && isValidCustomer(request.resource.data) && (isAdmin() || isSupport());
+      allow delete: if isAdmin();
+
+      // Subcollections
+      match /users/{cUserId} {
+        allow read: if isAuthenticated();
+        allow write: if isAuthenticated() && (isAdmin() || isSupport());
+      }
+      match /equipment/{eqId} {
+        allow read: if isAuthenticated();
+        allow write: if isAuthenticated() && (isAdmin() || isSupport());
+      }
+      match /selectCare/{scId} {
+        allow read: if isAuthenticated();
+        allow write: if isAuthenticated() && (isAdmin() || isSupport());
+      }
+      match /drivingLogs/{logId} {
+        allow read: if isAuthenticated();
+        allow write: if isAuthenticated() && (isAdmin() || isSupport());
+      }
+      match /contracts/{contractId} {
+        allow read: if isAuthenticated();
+        allow write: if isAuthenticated() && (isAdmin() || isSupport());
+      }
+    }
+
+    // News collection
+    match /news/{newsId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // Brands collection
+    match /brands/{brandId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && (isAdmin() || isSupport());
+    }
+
+    // Contracts sub-files
+    match /contracts/{contractId}/files/{fileId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && (isAdmin() || isSupport());
+    }
+
+    // Calendar events
+    match /calendarEvents/{eventId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    // Select Care logs
+    match /selectCare/{selectCareId}/logs/{logId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    // Support tickets
+    match /supportTickets/{ticketId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+
+      match /logs/{logId} {
+        allow read: if isAuthenticated();
+        allow write: if isAuthenticated();
+      }
+    }
+
+    // Select Care history
+    match /selectCareHistory/{historyId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || isSupport();
+    }
+  }
+}
