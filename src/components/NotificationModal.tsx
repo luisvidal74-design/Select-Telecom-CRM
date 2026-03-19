@@ -60,7 +60,7 @@ export default function NotificationModal({ isOpen, onClose, items }: Notificati
                   {sortedItems.map((item, idx) => {
                     const isSelectCare = !!item.brand;
                     const title = isSelectCare ? `${item.brand} ${item.model}` : item.type;
-                    const link = isSelectCare ? `/kunder/${item.customerId}` : '/avtal';
+                    const link = isSelectCare ? `/kunder/${item.customerId}?tab=selectCare` : '/avtal';
 
                     return (
                       <Link 

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { CalendarEvent, Contract, SelectCare } from '../types';
 import { 
@@ -33,6 +34,7 @@ import { cn } from '../lib/utils';
 
 export default function Calendar() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [contracts, setContracts] = useState<Contract[]>([]);
@@ -185,7 +187,15 @@ export default function Calendar() {
                   {items.slice(0, 3).map((item: any, idx) => (
                     <button
                       key={idx}
-                      onClick={() => setSelectedEvent(item)}
+                      onClick={() => {
+                        if (item.itemType === 'contract_expiry') {
+                          navigate(`/kunder/${item.customerId}?tab=contracts`);
+                        } else if (item.itemType === 'select_care_expiry') {
+                          navigate(`/kunder/${item.customerId}?tab=selectCare`);
+                        } else {
+                          setSelectedEvent(item);
+                        }
+                      }}
                       className={cn(
                         "w-full text-left px-2 py-1 rounded-lg text-[10px] font-bold truncate transition-all hover:scale-[1.02]",
                         item.itemType === 'event' ? "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 border border-blue-100 dark:border-blue-900/30" :
@@ -262,12 +272,26 @@ export default function Calendar() {
                   )}
                 </div>
 
-                <button 
-                  onClick={() => setSelectedEvent(null)}
-                  className="w-full py-4 bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-bold rounded-2xl hover:opacity-90 transition-all"
-                >
-                  Stäng
-                </button>
+                <div className="flex flex-col gap-3">
+                  {(selectedEvent.itemType === 'contract_expiry' || selectedEvent.itemType === 'select_care_expiry') && (
+                    <button 
+                      onClick={() => {
+                        const tab = selectedEvent.itemType === 'contract_expiry' ? 'contracts' : 'selectCare';
+                        navigate(`/kunder/${selectedEvent.customerId}?tab=${tab}`);
+                        setSelectedEvent(null);
+                      }}
+                      className="w-full py-4 bg-indigo-600 text-white font-bold rounded-2xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20"
+                    >
+                      Gå till kund
+                    </button>
+                  )}
+                  <button 
+                    onClick={() => setSelectedEvent(null)}
+                    className="w-full py-4 bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-bold rounded-2xl hover:opacity-90 transition-all"
+                  >
+                    Stäng
+                  </button>
+                </div>
               </div>
             </motion.div>
           </div>

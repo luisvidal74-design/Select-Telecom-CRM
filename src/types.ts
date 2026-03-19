@@ -9,6 +9,7 @@ export interface User {
   status: 'pending' | 'approved' | 'rejected';
   isAdmin: number;
   isSupport: number;
+  customerId?: number;
 }
 
 export interface Customer {
@@ -26,6 +27,7 @@ export interface Customer {
   services?: string; // Stored as JSON string or comma separated
   users?: CustomerUser[];
   equipment?: Equipment[];
+  itEquipment?: ITEquipment[];
   selectCare?: SelectCare[];
   selectCareHistory?: SelectCareHistory[];
   drivingLogs?: DrivingLog[];
@@ -48,6 +50,21 @@ export interface Brand {
   name: string;
 }
 
+export interface Model {
+  id: number;
+  name: string;
+}
+
+export interface Color {
+  id: number;
+  name: string;
+}
+
+export interface Memory {
+  id: number;
+  name: string;
+}
+
 export interface Equipment {
   id: number;
   customerId: number;
@@ -63,6 +80,8 @@ export interface Equipment {
   customerPrice: number;
   sellerId?: number;
   userId?: number;
+  trackingNumber?: string;
+  notes?: string;
 }
 
 export interface SelectCareLog {
@@ -74,6 +93,29 @@ export interface SelectCareLog {
   toStatus: string;
   timestamp: string;
   notes?: string;
+}
+
+export interface ITEquipment {
+  id: number;
+  customerId: number;
+  userId?: number;
+  sellerId?: number;
+  deviceName: string;
+  brand: string;
+  model: string;
+  memory?: string;
+  serialNumber: string;
+  trackingNumber?: string;
+  purchasePlace: string;
+  orderNumber: string;
+  purchaseDate: string;
+  purchasePrice: number;
+  customerPrice: number;
+  comment?: string;
+  userName?: string;
+  sellerName?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface SelectCare {
@@ -94,6 +136,7 @@ export interface SelectCare {
   endDate?: string;
   siemensContractNumber?: string;
   sellerId?: number;
+  trackingNumber?: string;
   status?: 'Aktiv' | 'Under reparation';
   logs?: SelectCareLog[];
 }
@@ -131,12 +174,16 @@ export interface Stats {
   customerCount: number;
   equipmentSales: { month: string; count: number; revenue: number }[];
   selectCareSales: { month: string; count: number; revenue: number }[];
+  drivingLogSales: { month: string; count: number; revenue: number }[];
   topModel: { brand: string; model: string; count: number } | null;
   equipmentRevenue: number;
   selectCareRevenue: number;
+  drivingLogRevenue: number;
   drivingLogsCount: number;
   expiringSelectCare: (SelectCare & { customerName: string })[];
   expiringContracts: (Contract & { customerName: string })[];
+  topSellers?: { firstName: string; lastName: string; totalRevenue: number }[];
+  topMobiles?: { brand: string; model: string; count: number }[];
 }
 
 export interface ContractFile {
@@ -185,6 +232,12 @@ export interface SupportTicket {
   priority: 'Låg' | 'Normal' | 'Hög' | 'Kritisk';
   createdBy: number;
   creatorName?: string;
+  responsibleSeller?: string;
+  isRead?: number;
+  isReadByAdmin?: number;
+  isReadByCreator?: number;
+  isTagged?: number;
+  taggedUserId?: number;
   assignedTo?: number;
   createdAt: string;
   updatedAt: string;

@@ -1,17 +1,20 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Search, Building2, MapPin, User, Phone, ChevronRight, Trash2, ChevronLeft } from 'lucide-react';
-import { Customer } from '../types';
+import { Plus, Search, Building2, MapPin, User as UserIcon, Phone, ChevronRight, Trash2, ChevronLeft, FileSpreadsheet } from 'lucide-react';
+import { Customer, User } from '../types';
 import { motion } from 'motion/react';
 import { useAuth } from '../context/AuthContext';
+import CustomerImport from '../components/CustomerImport';
 
 export default function Customers() {
   const { user } = useAuth();
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [sellers, setSellers] = useState<User[]>([]);
   const [search, setSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 15;
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isImportOpen, setIsImportOpen] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
   const [formData, setFormData] = useState({
     name: '',
@@ -38,8 +41,21 @@ export default function Customers() {
     setCustomers(data);
   };
 
+  const fetchSellers = async () => {
+    const res = await fetch('/api/users');
+    const data = await res.json();
+    // Filter for users who have 'Säljare' in their role or are not admins but could be sellers
+    // Based on Users.tsx, 'Säljare' is the default role for non-admins
+    const sellerUsers = data.filter((u: User) => 
+      u.status === 'approved' && 
+      (u.role?.toLowerCase().includes('säljare') || (!u.isAdmin && !u.role))
+    );
+    setSellers(sellerUsers);
+  };
+
   useEffect(() => {
     fetchCustomers();
+    fetchSellers();
   }, [user]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -112,6 +128,13 @@ export default function Customers() {
             />
           </div>
           <button 
+            onClick={() => setIsImportOpen(true)}
+            className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 rounded-xl font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors whitespace-nowrap"
+          >
+            <FileSpreadsheet className="w-5 h-5 text-green-500" />
+            Importera Excel
+          </button>
+          <button 
             onClick={() => setIsModalOpen(true)}
             className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground rounded-xl font-semibold shadow-lg shadow-primary/20 hover:opacity-90 transition-opacity whitespace-nowrap"
           >
@@ -162,7 +185,7 @@ export default function Customers() {
                 </div>
 
                 <div className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400">
-                  <User className="w-3.5 h-3.5 text-primary/60" />
+                  <UserIcon className="w-3.5 h-3.5 text-primary/60" />
                   <span className="truncate">{customer.contactPerson}</span>
                 </div>
 
@@ -251,6 +274,13 @@ export default function Customers() {
         </div>
       )}
 
+      {isImportOpen && (
+        <CustomerImport 
+          onImportComplete={() => fetchCustomers()}
+          onClose={() => setIsImportOpen(false)}
+        />
+      )}
+
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
           <motion.div 
@@ -300,7 +330,18 @@ export default function Customers() {
                 </div>
                 <div className="space-y-1">
                   <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Ansvarig säljare</label>
-                  <input className="w-full px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary" placeholder="Namn på säljare" value={formData.responsibleSeller} onChange={e => setFormData({...formData, responsibleSeller: e.target.value})} />
+                  <select 
+                    className="w-full px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary appearance-none"
+                    value={formData.responsibleSeller}
+                    onChange={e => setFormData({...formData, responsibleSeller: e.target.value})}
+                  >
+                    <option value="">Välj säljare...</option>
+                    {sellers.map(seller => (
+                      <option key={seller.id} value={`${seller.firstName} ${seller.lastName}`}>
+                        {seller.firstName} {seller.lastName}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div className="space-y-1">
                   <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Hemsida (för logotyp)</label>

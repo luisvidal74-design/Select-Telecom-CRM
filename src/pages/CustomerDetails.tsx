@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { 
   Building2, 
@@ -8,6 +8,7 @@ import {
   ShieldCheck, 
   Plus, 
   ChevronRight,
+  Monitor,
   Trash2, 
   Edit2, 
   ArrowLeft,
@@ -31,18 +32,20 @@ import {
   FileIcon,
   Loader2
 } from 'lucide-react';
-import { Customer, CustomerUser, Equipment, SelectCare, Brand, DrivingLog, Contract, ContractFile } from '../types';
+import { Customer, CustomerUser, Equipment, ITEquipment, SelectCare, Brand, DrivingLog, Contract, ContractFile, User } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 
 export default function CustomerDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
   const [customer, setCustomer] = useState<Customer | null>(null);
-  const [activeTab, setActiveTab] = useState<'users' | 'equipment' | 'selectCare' | 'drivingLogs' | 'contracts'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'equipment' | 'it' | 'selectCare' | 'drivingLogs' | 'contracts'>('users');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDrivingLogModalOpen, setIsDrivingLogModalOpen] = useState(false);
+  const [isEditDrivingLogModalOpen, setIsEditDrivingLogModalOpen] = useState(false);
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
   const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
   const [isLogsModalOpen, setIsLogsModalOpen] = useState(false);
@@ -52,26 +55,37 @@ export default function CustomerDetails() {
   const [drivingLogs, setDrivingLogs] = useState<DrivingLog[]>([]);
   const [pasteData, setPasteData] = useState('');
   const [newBrand, setNewBrand] = useState('');
-  const [selectedSummary, setSelectedSummary] = useState<{ type: 'user' | 'equipment' | 'selectCare' | 'selectCareHistory' | 'contract', item: any } | null>(null);
-  const [editingItem, setEditingItem] = useState<{ type: 'user' | 'equipment' | 'selectCare' | 'contracts', id: number } | null>(null);
+  const [newModel, setNewModel] = useState('');
+  const [newColor, setNewColor] = useState('');
+  const [newMemory, setNewMemory] = useState('');
+  const [newPurchasePlace, setNewPurchasePlace] = useState('');
+  const [selectedSummary, setSelectedSummary] = useState<{ type: 'user' | 'equipment' | 'it' | 'selectCare' | 'selectCareHistory' | 'contract' | 'drivingLog', item: any } | null>(null);
+  const [editingItem, setEditingItem] = useState<{ type: 'user' | 'equipment' | 'it' | 'selectCare' | 'contracts' | 'drivingLogs', id: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: string, id: number } | null>(null);
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [viewingPdf, setViewingPdf] = useState<{ url: string; name: string } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [sellers, setSellers] = useState<User[]>([]);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const [userForm, setUserForm] = useState({ firstName: '', lastName: '', email: '', phone: '', role: '', office: '', isAuthorizedBuyer: 0 });
-  const [equipmentForm, setEquipmentForm] = useState({ brand: '', model: '', color: '', memory: '', imei: '', purchasePlace: '', orderNumber: '', purchaseDate: '', purchasePrice: 0, customerPrice: 0, sellerId: 0, userId: 0 });
-  const [scForm, setScForm] = useState({ brand: '', model: '', color: '', memory: '', imei: '', purchasePlace: '', orderNumber: '', purchaseDate: '', purchasePrice: 0, monthlyFee: 0, userId: 0, contractPeriod: 24, endDate: '', siemensContractNumber: '', sellerId: 0 });
+  const [equipmentForm, setEquipmentForm] = useState({ brand: '', model: '', color: '', memory: '', imei: '', purchasePlace: '', orderNumber: '', purchaseDate: '', purchasePrice: 0, customerPrice: 0, sellerId: 0, userId: 0, trackingNumber: '', notes: '' });
+  const [itForm, setItForm] = useState({ deviceName: '', brand: '', model: '', memory: '', serialNumber: '', trackingNumber: '', purchasePlace: '', orderNumber: '', purchaseDate: '', purchasePrice: 0, customerPrice: 0, sellerId: 0, userId: 0, comment: '' });
+  const [scForm, setScForm] = useState({ brand: '', model: '', color: '', memory: '', imei: '', purchasePlace: '', orderNumber: '', purchaseDate: '', purchasePrice: 0, monthlyFee: 0, userId: 0, contractPeriod: 24, endDate: '', siemensContractNumber: '', sellerId: 0, trackingNumber: '' });
+  const [suggestions, setSuggestions] = useState<{ brands: string[], models: string[], colors: string[], memories: string[] }>({ brands: [], models: [], colors: [], memories: [] });
+  const [itSuggestions, setItSuggestions] = useState<{ brands: string[], models: string[], memory: string[], purchasePlaces: string[] }>({ brands: [], models: [], memory: [], purchasePlaces: [] });
   const [customerForm, setCustomerForm] = useState({ name: '', orgNumber: '', address: '', city: '', zipCode: '', contactPerson: '', contactPhone: '', responsibleSeller: '', website: '', services: '' });
+  const [drivingLogForm, setDrivingLogForm] = useState({ regNo: '', driverName: '', email: '', deviceType: '', schema: '', monthlyFee: 0 });
+  const [drivingLogSellerId, setDrivingLogSellerId] = useState<number>(0);
   const [contractForm, setContractForm] = useState({
     type: 'Telefoniavtal',
     startDate: new Date().toISOString().split('T')[0],
     contractPeriod: 24,
     endDate: '',
-    customFields: ''
+    customFields: '',
+    sellerId: 0
   });
 
   const calculateEndDate = (startDate: string, months: number) => {
@@ -111,6 +125,14 @@ export default function CustomerDetails() {
     }
   }, [contractForm.startDate, contractForm.contractPeriod]);
 
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    const tab = searchParams.get('tab');
+    if (tab && ['users', 'equipment', 'it', 'selectCare', 'drivingLogs', 'contracts'].includes(tab)) {
+      setActiveTab(tab as any);
+    }
+  }, [location.search]);
+
   const fetchData = async () => {
     if (!user) return;
     const params = new URLSearchParams({
@@ -118,19 +140,39 @@ export default function CustomerDetails() {
       isAdmin: user.isAdmin ? 'true' : 'false',
       role: user.role || ''
     });
-    const [custRes, brandRes, logsRes, contractsRes] = await Promise.all([
+    const [custRes, brandRes, logsRes, contractsRes, usersRes] = await Promise.all([
       fetch(`/api/customers/${id}?${params}`),
       fetch('/api/brands'),
       fetch(`/api/customers/${id}/driving-logs`),
-      fetch(`/api/contracts?customerId=${id}`)
+      fetch(`/api/contracts?customerId=${id}`),
+      fetch('/api/users')
     ]);
     const custData = await custRes.json();
     const brandData = await brandRes.json();
     const logsData = await logsRes.json();
     const contractsData = await contractsRes.json();
+    const usersData = await usersRes.json();
+    const sellerUsers = usersData.filter((u: User) => 
+      u.status === 'approved' && 
+      (u.role?.toLowerCase().includes('säljare') || (!u.isAdmin && !u.role))
+    );
+    
+    const responsibleSellerUser = sellerUsers.find((u: User) => 
+      `${u.firstName} ${u.lastName}`.toLowerCase() === custData.responsibleSeller?.toLowerCase()
+    );
+    const defaultSellerId = responsibleSellerUser ? responsibleSellerUser.id : (user?.id || 0);
+
     setCustomer(custData);
     setDrivingLogs(logsData);
     setContracts(contractsData);
+    setSellers(sellerUsers);
+    
+    setEquipmentForm(prev => ({ ...prev, sellerId: defaultSellerId }));
+    setItForm(prev => ({ ...prev, sellerId: defaultSellerId }));
+    setScForm(prev => ({ ...prev, sellerId: defaultSellerId }));
+    setContractForm(prev => ({ ...prev, sellerId: defaultSellerId }));
+    setDrivingLogSellerId(defaultSellerId);
+
     setCustomerForm({
       name: custData.name,
       orgNumber: custData.orgNumber,
@@ -144,6 +186,20 @@ export default function CustomerDetails() {
       services: custData.services || ''
     });
     setBrands(brandData);
+    
+    // Fetch suggestions
+    const suggestionsRes = await fetch('/api/equipment/suggestions');
+    if (suggestionsRes.ok) {
+      const suggestionsData = await suggestionsRes.json();
+      setSuggestions(suggestionsData);
+    }
+
+    const itSuggestionsRes = await fetch('/api/it-equipment/suggestions');
+    if (itSuggestionsRes.ok) {
+      const itSuggestionsData = await itSuggestionsRes.json();
+      setItSuggestions(itSuggestionsData);
+    }
+    
     setLoading(false);
   };
 
@@ -184,13 +240,36 @@ export default function CustomerDetails() {
     const res = await fetch(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...equipmentForm, sellerId: editingItem ? equipmentForm.sellerId : user?.id }),
+      body: JSON.stringify({ ...equipmentForm, sellerId: equipmentForm.sellerId || user?.id }),
     });
     if (res.ok) {
       fetchData();
       setIsModalOpen(false);
       setEditingItem(null);
-      setEquipmentForm({ brand: '', model: '', color: '', memory: '', imei: '', purchasePlace: '', orderNumber: '', purchaseDate: '', purchasePrice: 0, customerPrice: 0, sellerId: 0, userId: 0 });
+      setEquipmentForm({ brand: '', model: '', color: '', memory: '', imei: '', purchasePlace: '', orderNumber: '', purchaseDate: '', purchasePrice: 0, customerPrice: 0, sellerId: 0, userId: 0, trackingNumber: '', notes: '' });
+    } else {
+      const errorData = await res.json();
+      alert(`Fel vid sparning: ${errorData.error || res.statusText}`);
+    }
+  };
+
+  const handleAddITEquipment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const url = editingItem 
+      ? `/api/it-equipment/${editingItem.id}` 
+      : `/api/customers/${id}/it-equipment`;
+    const method = editingItem ? 'PUT' : 'POST';
+
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...itForm, sellerId: itForm.sellerId || user?.id }),
+    });
+    if (res.ok) {
+      fetchData();
+      setIsModalOpen(false);
+      setEditingItem(null);
+      setItForm({ deviceName: '', brand: '', model: '', memory: '', serialNumber: '', trackingNumber: '', purchasePlace: '', orderNumber: '', purchaseDate: '', purchasePrice: 0, customerPrice: 0, sellerId: 0, userId: 0, comment: '' });
     } else {
       const errorData = await res.json();
       alert(`Fel vid sparning: ${errorData.error || res.statusText}`);
@@ -213,7 +292,7 @@ export default function CustomerDetails() {
       fetchData();
       setIsModalOpen(false);
       setEditingItem(null);
-      setScForm({ brand: '', model: '', color: '', memory: '', imei: '', purchasePlace: '', orderNumber: '', purchaseDate: '', purchasePrice: 0, monthlyFee: 0, userId: 0, contractPeriod: 24, endDate: '', siemensContractNumber: '', sellerId: 0 });
+      setScForm({ brand: '', model: '', color: '', memory: '', imei: '', purchasePlace: '', orderNumber: '', purchaseDate: '', purchasePrice: 0, monthlyFee: 0, userId: 0, contractPeriod: 24, endDate: '', siemensContractNumber: '', sellerId: 0, trackingNumber: '' });
     } else {
       const errorData = await res.json();
       alert(`Fel vid sparning: ${errorData.error || res.statusText}`);
@@ -233,7 +312,7 @@ export default function CustomerDetails() {
       fd.append('startDate', contractForm.startDate);
       fd.append('contractPeriod', contractForm.contractPeriod.toString());
       fd.append('endDate', contractForm.endDate);
-      fd.append('sellerId', user?.id.toString() || '');
+      fd.append('sellerId', (contractForm.sellerId || user?.id || '').toString());
       fd.append('userId', user?.id.toString() || '');
       fd.append('isAdmin', user?.isAdmin ? 'true' : 'false');
       fd.append('role', user?.role || '');
@@ -257,7 +336,8 @@ export default function CustomerDetails() {
           startDate: new Date().toISOString().split('T')[0],
           contractPeriod: 24,
           endDate: '',
-          customFields: ''
+          customFields: '',
+          sellerId: 0
         });
         fetchData();
       } else {
@@ -273,7 +353,8 @@ export default function CustomerDetails() {
 
   const handleAddBrand = async () => {
     if (!newBrand) return;
-    const res = await fetch('/api/brands', {
+    const url = activeTab === 'it' ? '/api/it-equipment/brands' : '/api/brands';
+    const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: newBrand }),
@@ -282,7 +363,123 @@ export default function CustomerDetails() {
       const brandRes = await fetch('/api/brands');
       const brandData = await brandRes.json();
       setBrands(brandData);
+      
+      // Select the new brand in the form
+      if (activeTab === 'equipment') {
+        setEquipmentForm(prev => ({ ...prev, brand: newBrand }));
+      } else if (activeTab === 'selectCare') {
+        setScForm(prev => ({ ...prev, brand: newBrand }));
+      } else if (activeTab === 'it') {
+        setItForm(prev => ({ ...prev, brand: newBrand }));
+      }
+      
       setNewBrand('');
+      // Refresh suggestions
+      const suggRes = await fetch('/api/equipment/suggestions');
+      const suggData = await suggRes.json();
+      setSuggestions(suggData);
+
+      const itSuggRes = await fetch('/api/it-equipment/suggestions');
+      const itSuggData = await itSuggRes.json();
+      setItSuggestions(itSuggData);
+    }
+  };
+
+  const handleAddModel = async () => {
+    if (!newModel) return;
+    const url = activeTab === 'it' ? '/api/it-equipment/models' : '/api/models';
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newModel }),
+    });
+    if (res.ok) {
+      // Select the new model in the form
+      if (activeTab === 'equipment') {
+        setEquipmentForm(prev => ({ ...prev, model: newModel }));
+      } else if (activeTab === 'selectCare') {
+        setScForm(prev => ({ ...prev, model: newModel }));
+      } else if (activeTab === 'it') {
+        setItForm(prev => ({ ...prev, model: newModel }));
+      }
+      
+      setNewModel('');
+      // Refresh suggestions
+      const suggRes = await fetch('/api/equipment/suggestions');
+      const suggData = await suggRes.json();
+      setSuggestions(suggData);
+
+      const itSuggRes = await fetch('/api/it-equipment/suggestions');
+      const itSuggData = await itSuggRes.json();
+      setItSuggestions(itSuggData);
+    }
+  };
+
+  const handleAddColor = async () => {
+    if (!newColor) return;
+    const res = await fetch('/api/colors', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newColor }),
+    });
+    if (res.ok) {
+      // Select the new color in the form
+      if (activeTab === 'equipment') {
+        setEquipmentForm(prev => ({ ...prev, color: newColor }));
+      } else if (activeTab === 'selectCare') {
+        setScForm(prev => ({ ...prev, color: newColor }));
+      }
+      
+      setNewColor('');
+      // Refresh suggestions
+      const suggRes = await fetch('/api/equipment/suggestions');
+      const suggData = await suggRes.json();
+      setSuggestions(suggData);
+    }
+  };
+
+  const handleAddMemory = async () => {
+    if (!newMemory) return;
+    const url = activeTab === 'it' ? '/api/it-equipment/memory' : '/api/memories';
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newMemory }),
+    });
+    if (res.ok) {
+      // Select the new memory in the form
+      if (activeTab === 'equipment') {
+        setEquipmentForm(prev => ({ ...prev, memory: newMemory }));
+      } else if (activeTab === 'selectCare') {
+        setScForm(prev => ({ ...prev, memory: newMemory }));
+      } else if (activeTab === 'it') {
+        setItForm(prev => ({ ...prev, memory: newMemory }));
+      }
+      
+      setNewMemory('');
+      // Refresh suggestions
+      const suggRes = await fetch('/api/equipment/suggestions');
+      const suggData = await suggRes.json();
+      setSuggestions(suggData);
+
+      const itSuggRes = await fetch('/api/it-equipment/suggestions');
+      const itSuggData = await itSuggRes.json();
+      setItSuggestions(itSuggData);
+    }
+  };
+
+  const handleAddITPurchasePlace = async (name: string) => {
+    if (!name) return;
+    const res = await fetch('/api/it-equipment/purchase-places', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    if (res.ok) {
+      setItForm(prev => ({ ...prev, purchasePlace: name }));
+      const itSuggRes = await fetch('/api/it-equipment/suggestions');
+      const itSuggData = await itSuggRes.json();
+      setItSuggestions(itSuggData);
     }
   };
 
@@ -309,7 +506,7 @@ export default function CustomerDetails() {
     }
   };
 
-  const handleEdit = (type: 'user' | 'equipment' | 'selectCare' | 'contracts', item: any) => {
+  const handleEdit = (type: 'user' | 'equipment' | 'it' | 'selectCare' | 'contracts' | 'drivingLogs', item: any) => {
     setEditingItem({ type, id: item.id });
     if (type === 'user') {
       setUserForm({ 
@@ -321,6 +518,7 @@ export default function CustomerDetails() {
         office: item.office,
         isAuthorizedBuyer: item.isAuthorizedBuyer || 0
       });
+      setIsModalOpen(true);
     } else if (type === 'equipment') {
       setEquipmentForm({
         brand: item.brand,
@@ -334,8 +532,29 @@ export default function CustomerDetails() {
         purchasePrice: item.purchasePrice,
         customerPrice: item.customerPrice,
         sellerId: item.sellerId || 0,
-        userId: item.userId || 0
+        userId: item.userId || 0,
+        trackingNumber: item.trackingNumber || '',
+        notes: item.notes || ''
       });
+      setIsModalOpen(true);
+    } else if (type === 'it') {
+      setItForm({
+        deviceName: item.deviceName,
+        brand: item.brand,
+        model: item.model,
+        memory: item.memory || '',
+        serialNumber: item.serialNumber,
+        trackingNumber: item.trackingNumber || '',
+        purchasePlace: item.purchasePlace || '',
+        orderNumber: item.orderNumber || '',
+        purchaseDate: item.purchaseDate || '',
+        purchasePrice: item.purchasePrice || 0,
+        customerPrice: item.customerPrice || 0,
+        sellerId: item.sellerId || 0,
+        userId: item.userId || 0,
+        comment: item.comment || ''
+      });
+      setIsModalOpen(true);
     } else if (type === 'selectCare') {
       setScForm({
         brand: item.brand,
@@ -352,19 +571,32 @@ export default function CustomerDetails() {
         contractPeriod: item.contractPeriod || 24,
         endDate: item.endDate || '',
         siemensContractNumber: item.siemensContractNumber || '',
-        sellerId: item.sellerId || 0
+        sellerId: item.sellerId || 0,
+        trackingNumber: item.trackingNumber || ''
       });
+      setIsModalOpen(true);
     } else if (type === 'contracts') {
       setContractForm({
         type: item.type,
         startDate: item.startDate,
         contractPeriod: item.contractPeriod,
         endDate: item.endDate,
-        customFields: item.customFields || ''
+        customFields: item.customFields || '',
+        sellerId: item.sellerId || 0
       });
       setSelectedFiles([]);
+      setIsModalOpen(true);
+    } else if (type === 'drivingLogs') {
+      setDrivingLogForm({
+        regNo: item.regNo,
+        driverName: item.driverName,
+        email: item.email,
+        deviceType: item.deviceType || '',
+        schema: item.schema || '',
+        monthlyFee: item.monthlyFee || 0
+      });
+      setIsEditDrivingLogModalOpen(true);
     }
-    setIsModalOpen(true);
   };
 
   const handleUpdateCustomer = async (e: React.FormEvent) => {
@@ -462,7 +694,7 @@ export default function CustomerDetails() {
       const res = await fetch(`/api/customers/${id}/driving-logs/bulk`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ logs, sellerId: user?.id })
+        body: JSON.stringify({ logs, sellerId: drivingLogSellerId || user?.id })
       });
 
       if (res.ok) {
@@ -473,6 +705,23 @@ export default function CustomerDetails() {
     } catch (error) {
       console.error('Failed to save driving logs:', error);
       alert('Ett fel uppstod när körjournalerna skulle sparas.');
+    }
+  };
+
+  const handleUpdateDrivingLog = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingItem || editingItem.type !== 'drivingLogs') return;
+
+    const res = await fetch(`/api/driving-logs/${editingItem.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(drivingLogForm)
+    });
+
+    if (res.ok) {
+      setIsEditDrivingLogModalOpen(false);
+      setEditingItem(null);
+      fetchData();
     }
   };
 
@@ -563,10 +812,11 @@ export default function CustomerDetails() {
         {[
           { id: 'users', label: 'Användare', icon: UsersIcon },
           { id: 'equipment', label: 'Utrustning', icon: Smartphone },
+          { id: 'it', label: 'IT', icon: Monitor },
+          { id: 'drivingLogs', label: 'Körjournaler', icon: Calendar },
           { id: 'selectCare', label: 'Select Care', icon: ShieldCheck },
           { id: 'contracts', label: 'Avtal', icon: FileText },
-          { id: 'drivingLogs', label: 'Körjournaler', icon: Calendar },
-        ].map((tab) => (
+        ].filter(tab => user?.role !== 'Kund' || tab.id !== 'contracts').map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id as any)}
@@ -591,11 +841,12 @@ export default function CustomerDetails() {
           <h2 className="text-xl font-bold text-slate-900 dark:text-white">
             {activeTab === 'users' && 'Användare'}
             {activeTab === 'equipment' && 'Utrustning'}
+            {activeTab === 'it' && 'IT-utrustning'}
             {activeTab === 'selectCare' && 'Select Care Avtal'}
             {activeTab === 'contracts' && 'Avtal'}
             {activeTab === 'drivingLogs' && 'Körjournaler'}
           </h2>
-        {(user?.isAdmin === 1 || (activeTab === 'contracts' && (user?.isSupport === 1 || customer?.responsibleSeller === `${user?.firstName} ${user?.lastName}`))) && (
+        {user?.role !== 'Kund' && (user?.isAdmin === 1 || user?.isSupport === 1 || customer?.responsibleSeller === `${user?.firstName} ${user?.lastName}`) && (
           <button 
             onClick={() => {
               if (activeTab === 'drivingLogs') {
@@ -608,7 +859,8 @@ export default function CustomerDetails() {
                     startDate: new Date().toISOString().split('T')[0],
                     contractPeriod: 24,
                     endDate: '',
-                    customFields: ''
+                    customFields: '',
+                    sellerId: 0
                   });
                   setSelectedFiles([]);
                 }
@@ -620,6 +872,7 @@ export default function CustomerDetails() {
             <Plus className="w-4 h-4" />
             {activeTab === 'users' && 'Lägg till användare'}
             {activeTab === 'equipment' && 'Lägg till utrustning'}
+            {activeTab === 'it' && 'Lägg till utrustning'}
             {activeTab === 'selectCare' && 'Lägg till avtal'}
             {activeTab === 'contracts' && 'Nytt avtal'}
             {activeTab === 'drivingLogs' && 'Uppdatera lista'}
@@ -664,7 +917,7 @@ export default function CustomerDetails() {
                       </div>
                     </div>
                     <div className="flex items-center justify-end gap-1 border-t md:border-t-0 pt-2 md:pt-0 border-slate-50 dark:border-slate-800">
-                      {user?.isAdmin === 1 && (
+                      {user?.role !== 'Kund' && (user?.isAdmin === 1 || user?.isSupport === 1 || customer?.responsibleSeller === `${user?.firstName} ${user?.lastName}`) && (
                         <>
                           <button 
                             onClick={(e) => { e.stopPropagation(); handleEdit('user', cUser); }} 
@@ -698,7 +951,7 @@ export default function CustomerDetails() {
                       <div className="w-10 h-10 bg-slate-50 dark:bg-slate-800 rounded-lg flex items-center justify-center flex-shrink-0">
                         <Smartphone className="w-5 h-5 text-slate-400" />
                       </div>
-                      <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 items-center">
+                      <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 items-center">
                         <div>
                           <h4 className="font-bold text-slate-900 dark:text-white truncate">{eq.brand} {eq.model}</h4>
                           <p className="text-xs text-slate-500 truncate">{eq.color} • {eq.memory}</p>
@@ -712,13 +965,29 @@ export default function CustomerDetails() {
                           <span className="text-xs text-slate-600 dark:text-slate-400 truncate">{eq.purchaseDate}</span>
                         </div>
                         <div className="flex flex-col">
+                          <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Kollinummer</span>
+                          {eq.trackingNumber ? (
+                            <a 
+                              href={`https://www.postnord.se/vara-verktyg/spara-brev-paket-och-pall/?shipmentId=${eq.trackingNumber}`} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="text-xs text-primary hover:underline truncate"
+                            >
+                              {eq.trackingNumber}
+                            </a>
+                          ) : (
+                            <span className="text-xs text-slate-400">-</span>
+                          )}
+                        </div>
+                        <div className="flex flex-col">
                           <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Kundpris</span>
                           <span className="text-xs font-bold text-primary">{eq.customerPrice.toLocaleString()} kr</span>
                         </div>
                       </div>
                     </div>
                     <div className="flex items-center justify-end gap-1 border-t md:border-t-0 pt-2 md:pt-0 border-slate-50 dark:border-slate-800">
-                      {user?.isAdmin === 1 && (
+                      {user?.role !== 'Kund' && (user?.isAdmin === 1 || user?.isSupport === 1 || customer?.responsibleSeller === `${user?.firstName} ${user?.lastName}`) && (
                         <>
                           <button 
                             onClick={(e) => { e.stopPropagation(); handleEdit('equipment', eq); }} 
@@ -728,6 +997,76 @@ export default function CustomerDetails() {
                           </button>
                           <button 
                             onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ type: 'equipment', id: eq.id }); }} 
+                            className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 rounded-lg transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </motion.div>
+            )}
+
+            {activeTab === 'it' && (
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-2">
+                {customer.itEquipment?.map(it => (
+                  <div 
+                    key={it.id} 
+                    onClick={() => setSelectedSummary({ type: 'it', item: it })}
+                    className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-transparent hover:border-primary transition-all cursor-pointer group shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4"
+                  >
+                    <div className="flex items-center gap-4 flex-1 min-w-0">
+                      <div className="w-10 h-10 bg-slate-50 dark:bg-slate-800 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <Monitor className="w-5 h-5 text-slate-400" />
+                      </div>
+                      <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 items-center">
+                        <div>
+                          <h4 className="font-bold text-slate-900 dark:text-white truncate">{it.deviceName}</h4>
+                          <p className="text-xs text-slate-500 truncate">{it.brand} {it.model} {it.memory && `• ${it.memory}`}</p>
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Serienummer</span>
+                          <span className="text-xs text-slate-600 dark:text-slate-400 truncate">{it.serialNumber}</span>
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Inköpsdatum</span>
+                          <span className="text-xs text-slate-600 dark:text-slate-400 truncate">{it.purchaseDate}</span>
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Kollinummer</span>
+                          {it.trackingNumber ? (
+                            <a 
+                              href={`https://www.postnord.se/vara-verktyg/spara-brev-paket-och-pall/?shipmentId=${it.trackingNumber}`} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="text-xs text-primary hover:underline truncate"
+                            >
+                              {it.trackingNumber}
+                            </a>
+                          ) : (
+                            <span className="text-xs text-slate-400">-</span>
+                          )}
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Kundpris</span>
+                          <span className="text-xs font-bold text-primary">{it.customerPrice.toLocaleString()} kr</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-end gap-1 border-t md:border-t-0 pt-2 md:pt-0 border-slate-50 dark:border-slate-800">
+                      {(user?.isAdmin === 1 || user?.isSupport === 1 || customer?.responsibleSeller === `${user?.firstName} ${user?.lastName}`) && (
+                        <>
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); handleEdit('it', it); }} 
+                            className="p-2 text-slate-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ type: 'it-equipment', id: it.id }); }} 
                             className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 rounded-lg transition-colors"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -761,7 +1100,7 @@ export default function CustomerDetails() {
                               <div className="w-10 h-10 bg-amber-100 dark:bg-amber-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
                                 <Wrench className="w-5 h-5 text-amber-600 dark:text-amber-400" />
                               </div>
-                              <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 items-center">
+                              <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 items-center">
                                 <div>
                                   <h4 className="font-bold text-slate-900 dark:text-white truncate">{sc.brand} {sc.model}</h4>
                                   <p className="text-xs text-amber-600 font-medium">Under reparation</p>
@@ -773,6 +1112,22 @@ export default function CustomerDetails() {
                                 <div className="flex flex-col">
                                   <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">IMEI</span>
                                   <span className="text-xs text-slate-600 dark:text-slate-400 truncate">{sc.imei}</span>
+                                </div>
+                                <div className="flex flex-col">
+                                  <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Kollinummer</span>
+                                  {sc.trackingNumber ? (
+                                    <a 
+                                      href={`https://www.postnord.se/vara-verktyg/spara-brev-paket-och-pall/?shipmentId=${sc.trackingNumber}`} 
+                                      target="_blank" 
+                                      rel="noopener noreferrer"
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="text-xs text-primary hover:underline truncate"
+                                    >
+                                      {sc.trackingNumber}
+                                    </a>
+                                  ) : (
+                                    <span className="text-xs text-slate-400">-</span>
+                                  )}
                                 </div>
                                 <div className="flex flex-col">
                                   <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Senaste logg</span>
@@ -847,7 +1202,7 @@ export default function CustomerDetails() {
                                 <ShieldCheck className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                               )}
                             </div>
-                            <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 items-center">
+                            <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-3 items-center">
                               <div>
                                 <h4 className="font-bold text-slate-900 dark:text-white truncate">{sc.brand} {sc.model}</h4>
                                 <p className="text-xs text-indigo-500 font-medium">Select Care Avtal</p>
@@ -872,24 +1227,44 @@ export default function CustomerDetails() {
                                 <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">IMEI</span>
                                 <span className="text-xs text-slate-600 dark:text-slate-400 truncate">{sc.imei}</span>
                               </div>
+                              <div className="flex flex-col">
+                                <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Kollinummer</span>
+                                {sc.trackingNumber ? (
+                                  <a 
+                                    href={`https://www.postnord.se/vara-verktyg/spara-brev-paket-och-pall/?shipmentId=${sc.trackingNumber}`} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="text-xs text-primary hover:underline truncate"
+                                  >
+                                    {sc.trackingNumber}
+                                  </a>
+                                ) : (
+                                  <span className="text-xs text-slate-400">-</span>
+                                )}
+                              </div>
                             </div>
                           </div>
                           <div className="flex items-center justify-end gap-1 border-t md:border-t-0 pt-2 md:pt-0 border-slate-50 dark:border-slate-800">
-                            <button 
-                              onClick={(e) => { e.stopPropagation(); setSelectedSc(sc); setIsLogsModalOpen(true); }}
-                              className="p-2 text-slate-400 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/10 rounded-lg transition-colors"
-                              title="Visa historik"
-                            >
-                              <History className="w-4 h-4" />
-                            </button>
-                            <button 
-                              onClick={(e) => { e.stopPropagation(); setSelectedSc(sc); setIsStatusModalOpen(true); }}
-                              className="p-2 text-slate-400 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/10 rounded-lg transition-colors"
-                              title="Skicka på reparation"
-                            >
-                              <Wrench className="w-4 h-4" />
-                            </button>
-                            {user?.isAdmin === 1 && (
+                            {user?.role !== 'Kund' && (
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); setSelectedSc(sc); setIsLogsModalOpen(true); }}
+                                className="p-2 text-slate-400 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/10 rounded-lg transition-colors"
+                                title="Visa historik"
+                              >
+                                <History className="w-4 h-4" />
+                              </button>
+                            )}
+                            {user?.role !== 'Kund' && (
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); setSelectedSc(sc); setIsStatusModalOpen(true); }}
+                                className="p-2 text-slate-400 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/10 rounded-lg transition-colors"
+                                title="Skicka på reparation"
+                              >
+                                <Wrench className="w-4 h-4" />
+                              </button>
+                            )}
+                            {user?.role !== 'Kund' && (user?.isAdmin === 1 || user?.isSupport === 1 || customer?.responsibleSeller === `${user?.firstName} ${user?.lastName}`) && (
                               <>
                                 <button 
                                   onClick={(e) => { e.stopPropagation(); handleEdit('selectCare', sc); }} 
@@ -1040,6 +1415,7 @@ export default function CustomerDetails() {
                           <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Typ av enhet</th>
                           <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Schema</th>
                           <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Månadskostnad</th>
+                          <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Åtgärder</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1053,6 +1429,22 @@ export default function CustomerDetails() {
                               <td className="py-3 px-4 text-sm text-slate-500">{log.schema || '-'}</td>
                               <td className="py-3 px-4 text-sm font-bold text-slate-900 dark:text-white text-right">
                                 {log.monthlyFee ? `${log.monthlyFee.toLocaleString()} kr` : '-'}
+                              </td>
+                              <td className="py-3 px-4 text-right">
+                                <div className="flex items-center justify-end gap-2">
+                                  <button 
+                                    onClick={() => handleEdit('drivingLogs', log)}
+                                    className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-400 hover:text-primary transition-colors"
+                                  >
+                                    <Edit2 className="w-4 h-4" />
+                                  </button>
+                                  <button 
+                                    onClick={() => handleDelete('driving-logs', log.id)}
+                                    className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-400 hover:text-red-500 transition-colors"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
                               </td>
                             </tr>
                           ))
@@ -1107,6 +1499,10 @@ export default function CustomerDetails() {
                             <div className="flex flex-col">
                               <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Avtalsperiod</span>
                               <span className="text-xs text-slate-600 dark:text-slate-400 truncate">{history.contractPeriod} mån ({history.endDate})</span>
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Kollinummer</span>
+                              <span className="text-xs text-slate-600 dark:text-slate-400 truncate">{history.trackingNumber || '-'}</span>
                             </div>
                           </div>
                         </div>
@@ -1165,7 +1561,18 @@ export default function CustomerDetails() {
                 </div>
                 <div className="space-y-1">
                   <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Ansvarig säljare</label>
-                  <input className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary" value={customerForm.responsibleSeller} onChange={e => setCustomerForm({...customerForm, responsibleSeller: e.target.value})} />
+                  <select 
+                    className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary appearance-none"
+                    value={customerForm.responsibleSeller}
+                    onChange={e => setCustomerForm({...customerForm, responsibleSeller: e.target.value})}
+                  >
+                    <option value="">Välj säljare...</option>
+                    {sellers.map(seller => (
+                      <option key={seller.id} value={`${seller.firstName} ${seller.lastName}`}>
+                        {seller.firstName} {seller.lastName}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div className="space-y-1">
                   <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Hemsida (för logotyp)</label>
@@ -1190,8 +1597,8 @@ export default function CustomerDetails() {
                           className={cn(
                             "px-3 py-1.5 rounded-lg text-xs font-bold transition-all border",
                             isSelected 
-                              ? "bg-primary text-primary-foreground border-primary" 
-                              : "bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:border-primary"
+                              ? "bg-emerald-500 text-white border-emerald-500 shadow-sm shadow-emerald-200 dark:shadow-none" 
+                              : "bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:border-emerald-500"
                           )}
                         >
                           {service}
@@ -1305,16 +1712,42 @@ export default function CustomerDetails() {
                       <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Utrustning</p>
                       {(customer?.equipment?.filter(eq => eq.userId === selectedSummary.item.id)?.length ?? 0) > 0 ? (
                         customer?.equipment?.filter(eq => eq.userId === selectedSummary.item.id).map(eq => (
-                          <div key={eq.id} className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl flex items-center justify-between">
+                          <div 
+                            key={eq.id} 
+                            onClick={() => setSelectedSummary({ type: 'equipment', item: eq })}
+                            className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl flex items-center justify-between hover:bg-primary/5 hover:border-primary/20 border border-transparent transition-all cursor-pointer group"
+                          >
                             <div>
-                              <p className="text-sm font-bold text-slate-900 dark:text-white">{eq.brand} {eq.model}</p>
+                              <p className="text-sm font-bold text-slate-900 dark:text-white group-hover:text-primary transition-colors">{eq.brand} {eq.model}</p>
                               <p className="text-[10px] text-slate-500">{eq.imei}</p>
                             </div>
-                            <Smartphone className="w-4 h-4 text-slate-400" />
+                            <Smartphone className="w-4 h-4 text-slate-400 group-hover:text-primary transition-colors" />
                           </div>
                         ))
                       ) : (
                         <p className="text-xs text-slate-500 italic">Ingen utrustning kopplad</p>
+                      )}
+                    </div>
+
+                    {/* IT Equipment */}
+                    <div className="space-y-2">
+                      <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">IT-utrustning</p>
+                      {(customer?.itEquipment?.filter(it => it.userId === selectedSummary.item.id)?.length ?? 0) > 0 ? (
+                        customer?.itEquipment?.filter(it => it.userId === selectedSummary.item.id).map(it => (
+                          <div 
+                            key={it.id} 
+                            onClick={() => setSelectedSummary({ type: 'it', item: it })}
+                            className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl flex items-center justify-between hover:bg-primary/5 hover:border-primary/20 border border-transparent transition-all cursor-pointer group"
+                          >
+                            <div>
+                              <p className="text-sm font-bold text-slate-900 dark:text-white group-hover:text-primary transition-colors">{it.deviceName}</p>
+                              <p className="text-[10px] text-slate-500">{it.brand} {it.model}</p>
+                            </div>
+                            <Monitor className="w-4 h-4 text-slate-400 group-hover:text-primary transition-colors" />
+                          </div>
+                        ))
+                      ) : (
+                        <p className="text-xs text-slate-500 italic">Ingen IT-utrustning kopplad</p>
                       )}
                     </div>
 
@@ -1323,10 +1756,14 @@ export default function CustomerDetails() {
                       <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Select Care</p>
                       {(customer?.selectCare?.filter(sc => sc.userId === selectedSummary.item.id)?.length ?? 0) > 0 ? (
                         customer?.selectCare?.filter(sc => sc.userId === selectedSummary.item.id).map(sc => (
-                          <div key={sc.id} className="p-3 bg-indigo-50/50 dark:bg-indigo-900/10 rounded-xl flex items-center justify-between border border-indigo-100 dark:border-indigo-900/30">
+                          <div 
+                            key={sc.id} 
+                            onClick={() => setSelectedSummary({ type: 'selectCare', item: sc })}
+                            className="p-3 bg-indigo-50/50 dark:bg-indigo-900/10 rounded-xl flex items-center justify-between border border-indigo-100 dark:border-indigo-900/30 hover:bg-indigo-100/50 dark:hover:bg-indigo-900/20 transition-all cursor-pointer group"
+                          >
                             <div>
                               <p className="text-sm font-bold text-indigo-600 dark:text-indigo-400">{sc.brand} {sc.model}</p>
-                              <p className="text-[10px] text-indigo-500">{sc.imei} • {sc.endDate}</p>
+                              <p className="text-[10px] text-indigo-600/60 dark:text-indigo-400/60 font-medium">{sc.imei} • {sc.contractPeriod} mån • {sc.endDate}</p>
                             </div>
                             <ShieldCheck className="w-4 h-4 text-indigo-400" />
                           </div>
@@ -1341,7 +1778,11 @@ export default function CustomerDetails() {
                       <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Körjournaler</p>
                       {drivingLogs.filter(log => log.email === selectedSummary.item.email).length > 0 ? (
                         drivingLogs.filter(log => log.email === selectedSummary.item.email).map(log => (
-                          <div key={log.id} className="p-3 bg-emerald-50/50 dark:bg-emerald-900/10 rounded-xl flex items-center justify-between border border-emerald-100 dark:border-emerald-900/30">
+                          <div 
+                            key={log.id} 
+                            onClick={() => setSelectedSummary({ type: 'drivingLog', item: log })}
+                            className="p-3 bg-emerald-50/50 dark:bg-emerald-900/10 rounded-xl flex items-center justify-between border border-emerald-100 dark:border-emerald-900/30 hover:bg-emerald-100/50 dark:hover:bg-emerald-900/20 transition-all cursor-pointer group"
+                          >
                             <div>
                               <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{log.regNo}</p>
                               <p className="text-[10px] text-emerald-500">{log.deviceType} • {log.schema}</p>
@@ -1353,6 +1794,124 @@ export default function CustomerDetails() {
                         <p className="text-xs text-slate-500 italic">Inga körjournaler kopplade</p>
                       )}
                     </div>
+                  </div>
+                </div>
+              )}
+
+              {selectedSummary.type === 'drivingLog' && (
+                <div className="space-y-6">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-emerald-100 dark:bg-emerald-900/30 rounded-2xl flex items-center justify-center">
+                      <Calendar className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold text-slate-900 dark:text-white">{selectedSummary.item.regNo}</h3>
+                      <p className="text-emerald-600 dark:text-emerald-400 font-bold">{selectedSummary.item.driverName}</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800">
+                      <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest mb-1">E-post</p>
+                      <p className="text-slate-900 dark:text-white font-semibold truncate">{selectedSummary.item.email}</p>
+                    </div>
+                    <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800">
+                      <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest mb-1">Enhetstyp</p>
+                      <p className="text-slate-900 dark:text-white font-semibold">{selectedSummary.item.deviceType || '-'}</p>
+                    </div>
+                    <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800">
+                      <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest mb-1">Schema</p>
+                      <p className="text-slate-900 dark:text-white font-semibold">{selectedSummary.item.schema || '-'}</p>
+                    </div>
+                    <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800">
+                      <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest mb-1">Månadsavgift</p>
+                      <p className="text-emerald-600 dark:text-emerald-400 font-bold text-lg">{selectedSummary.item.monthlyFee?.toLocaleString() || 0} kr/mån</p>
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800">
+                    <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest mb-1">Registrerad</p>
+                    <p className="text-slate-900 dark:text-white font-semibold">{new Date(selectedSummary.item.createdAt).toLocaleDateString()}</p>
+                  </div>
+                </div>
+              )}
+
+              {selectedSummary.type === 'it' && (
+                <div className="space-y-6">
+                  <div className="flex items-center gap-4">
+                    <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center">
+                      <Monitor className="w-8 h-8 text-primary" />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold text-slate-900 dark:text-white">{selectedSummary.item.deviceName}</h3>
+                      <p className="text-slate-500 font-medium">{selectedSummary.item.brand} {selectedSummary.item.model} {selectedSummary.item.memory && `• ${selectedSummary.item.memory}`}</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl space-y-1">
+                      <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Serienummer</p>
+                      <p className="text-slate-900 dark:text-white font-semibold">{selectedSummary.item.serialNumber}</p>
+                    </div>
+                    <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl space-y-1">
+                      <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Ordernummer</p>
+                      <p className="text-slate-900 dark:text-white font-semibold">{selectedSummary.item.orderNumber}</p>
+                    </div>
+                    <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl space-y-1">
+                      <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Inköpsdatum</p>
+                      <p className="text-slate-900 dark:text-white font-semibold">{selectedSummary.item.purchaseDate}</p>
+                    </div>
+                    <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl space-y-1">
+                      <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Inköpsställe</p>
+                      <p className="text-slate-900 dark:text-white font-semibold">{selectedSummary.item.purchasePlace}</p>
+                    </div>
+                    {user?.role !== 'Kund' && (
+                      <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl space-y-1">
+                        <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Inköpspris</p>
+                        <p className="text-slate-900 dark:text-white font-semibold">{selectedSummary.item.purchasePrice.toLocaleString()} kr</p>
+                      </div>
+                    )}
+                    <div className="p-4 bg-primary/5 rounded-2xl space-y-1 border border-primary/10">
+                      <p className="text-[10px] text-primary uppercase font-bold tracking-widest">Kundpris</p>
+                      <p className="text-primary font-bold text-lg">{selectedSummary.item.customerPrice.toLocaleString()} kr</p>
+                    </div>
+                    <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl space-y-1">
+                      <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Kollinummer</p>
+                      {selectedSummary.item.trackingNumber ? (
+                        <a 
+                          href={`https://www.postnord.se/vara-verktyg/spara-brev-paket-och-pall/?shipmentId=${selectedSummary.item.trackingNumber}`} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-primary font-semibold hover:underline"
+                        >
+                          {selectedSummary.item.trackingNumber}
+                        </a>
+                      ) : (
+                        <p className="text-slate-400 font-semibold">-</p>
+                      )}
+                    </div>
+                    <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl space-y-1">
+                      <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Kopplad till</p>
+                      <p className="text-slate-900 dark:text-white font-semibold">{selectedSummary.item.userName || 'Ej kopplad'}</p>
+                    </div>
+                    <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl space-y-1 col-span-2">
+                      <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Kommentar</p>
+                      <p className="text-slate-900 dark:text-white font-medium whitespace-pre-wrap">{selectedSummary.item.comment || 'Ingen kommentar'}</p>
+                    </div>
+                    {user?.role !== 'Kund' && (
+                      <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl space-y-1 border border-emerald-100 dark:border-emerald-900/30 col-span-2">
+                        <p className="text-[10px] text-emerald-600 dark:text-emerald-400 uppercase font-bold tracking-widest">TB (Täckningsbidrag)</p>
+                        <div className="flex items-baseline gap-2">
+                          <p className="text-emerald-600 dark:text-emerald-400 font-bold text-lg">
+                            {(selectedSummary.item.customerPrice - selectedSummary.item.purchasePrice).toLocaleString()} kr
+                          </p>
+                          <p className="text-emerald-500 text-sm font-medium">
+                            ({selectedSummary.item.customerPrice > 0 
+                              ? (((selectedSummary.item.customerPrice - selectedSummary.item.purchasePrice) / selectedSummary.item.customerPrice) * 100).toFixed(1) 
+                              : '0'}%)
+                          </p>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -1385,28 +1944,53 @@ export default function CustomerDetails() {
                       <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Inköpsställe</p>
                       <p className="text-slate-900 dark:text-white font-semibold">{selectedSummary.item.purchasePlace}</p>
                     </div>
-                    <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl space-y-1">
-                      <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Inköpspris</p>
-                      <p className="text-slate-900 dark:text-white font-semibold">{selectedSummary.item.purchasePrice.toLocaleString()} kr</p>
-                    </div>
+                    {user?.role !== 'Kund' && (
+                      <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl space-y-1">
+                        <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Inköpspris</p>
+                        <p className="text-slate-900 dark:text-white font-semibold">{selectedSummary.item.purchasePrice.toLocaleString()} kr</p>
+                      </div>
+                    )}
                     <div className="p-4 bg-primary/5 rounded-2xl space-y-1 border border-primary/10">
                       <p className="text-[10px] text-primary uppercase font-bold tracking-widest">Kundpris</p>
                       <p className="text-primary font-bold text-lg">{selectedSummary.item.customerPrice.toLocaleString()} kr</p>
                     </div>
-                    <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl space-y-1 border border-emerald-100 dark:border-emerald-900/30 col-span-2">
-                      <p className="text-[10px] text-emerald-600 dark:text-emerald-400 uppercase font-bold tracking-widest">TB (Täckningsbidrag)</p>
-                      <div className="flex items-baseline gap-2">
-                        <p className="text-emerald-600 dark:text-emerald-400 font-bold text-lg">
-                          {(selectedSummary.item.customerPrice - selectedSummary.item.purchasePrice).toLocaleString()} kr
-                        </p>
-                        <p className="text-emerald-500 text-sm font-medium">
-                          ({selectedSummary.item.customerPrice > 0 
-                            ? (((selectedSummary.item.customerPrice - selectedSummary.item.purchasePrice) / selectedSummary.item.customerPrice) * 100).toFixed(1) 
-                            : '0'}%)
-                        </p>
-                      </div>
+                    <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl space-y-1">
+                      <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Kollinummer</p>
+                      {selectedSummary.item.trackingNumber ? (
+                        <a 
+                          href={`https://www.postnord.se/vara-verktyg/spara-brev-paket-och-pall/?shipmentId=${selectedSummary.item.trackingNumber}`} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-primary font-semibold hover:underline"
+                        >
+                          {selectedSummary.item.trackingNumber}
+                        </a>
+                      ) : (
+                        <p className="text-slate-400 font-semibold">-</p>
+                      )}
                     </div>
+                    {user?.role !== 'Kund' && (
+                      <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl space-y-1 border border-emerald-100 dark:border-emerald-900/30 col-span-2">
+                        <p className="text-[10px] text-emerald-600 dark:text-emerald-400 uppercase font-bold tracking-widest">TB (Täckningsbidrag)</p>
+                        <div className="flex items-baseline gap-2">
+                          <p className="text-emerald-600 dark:text-emerald-400 font-bold text-lg">
+                            {(selectedSummary.item.customerPrice - selectedSummary.item.purchasePrice).toLocaleString()} kr
+                          </p>
+                          <p className="text-emerald-500 text-sm font-medium">
+                            ({selectedSummary.item.customerPrice > 0 
+                              ? (((selectedSummary.item.customerPrice - selectedSummary.item.purchasePrice) / selectedSummary.item.customerPrice) * 100).toFixed(1) 
+                              : '0'}%)
+                          </p>
+                        </div>
+                      </div>
+                    )}
                   </div>
+                  {selectedSummary.item.notes && (
+                    <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl space-y-2">
+                      <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Noteringar</p>
+                      <p className="text-slate-700 dark:text-slate-300 whitespace-pre-wrap text-sm">{selectedSummary.item.notes}</p>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1478,13 +2062,30 @@ export default function CustomerDetails() {
                       <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Inköpsdatum</p>
                       <p className="text-slate-900 dark:text-white font-semibold">{selectedSummary.item.purchaseDate}</p>
                     </div>
-                    <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl space-y-1">
-                      <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Inköpspris</p>
-                      <p className="text-slate-900 dark:text-white font-semibold">{selectedSummary.item.purchasePrice.toLocaleString()} kr</p>
-                    </div>
+                    {user?.role !== 'Kund' && (
+                      <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl space-y-1">
+                        <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Inköpspris</p>
+                        <p className="text-slate-900 dark:text-white font-semibold">{selectedSummary.item.purchasePrice.toLocaleString()} kr</p>
+                      </div>
+                    )}
                     <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl space-y-1 col-span-2">
                       <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Siemens avtalsnummer</p>
                       <p className="text-slate-900 dark:text-white font-semibold">{selectedSummary.item.siemensContractNumber || '-'}</p>
+                    </div>
+                    <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl space-y-1 col-span-2">
+                      <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Kollinummer</p>
+                      {selectedSummary.item.trackingNumber ? (
+                        <a 
+                          href={`https://www.postnord.se/vara-verktyg/spara-brev-paket-och-pall/?shipmentId=${selectedSummary.item.trackingNumber}`} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-primary font-semibold hover:underline"
+                        >
+                          {selectedSummary.item.trackingNumber}
+                        </a>
+                      ) : (
+                        <p className="text-slate-900 dark:text-white font-semibold">-</p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1532,13 +2133,30 @@ export default function CustomerDetails() {
                       <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Slutdatum</p>
                       <p className="text-slate-900 dark:text-white font-semibold">{selectedSummary.item.endDate}</p>
                     </div>
-                    <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl space-y-1">
-                      <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Inköpspris</p>
-                      <p className="text-slate-900 dark:text-white font-semibold">{selectedSummary.item.purchasePrice.toLocaleString()} kr</p>
-                    </div>
+                    {user?.role !== 'Kund' && (
+                      <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl space-y-1">
+                        <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Inköpspris</p>
+                        <p className="text-slate-900 dark:text-white font-semibold">{selectedSummary.item.purchasePrice.toLocaleString()} kr</p>
+                      </div>
+                    )}
                     <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl space-y-1 col-span-2">
                       <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Siemens avtalsnummer</p>
                       <p className="text-slate-900 dark:text-white font-semibold">{selectedSummary.item.siemensContractNumber || '-'}</p>
+                    </div>
+                    <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl space-y-1 col-span-2">
+                      <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Kollinummer</p>
+                      {selectedSummary.item.trackingNumber ? (
+                        <a 
+                          href={`https://www.postnord.se/vara-verktyg/spara-brev-paket-och-pall/?shipmentId=${selectedSummary.item.trackingNumber}`} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-primary font-semibold hover:underline"
+                        >
+                          {selectedSummary.item.trackingNumber}
+                        </a>
+                      ) : (
+                        <p className="text-slate-900 dark:text-white font-semibold">-</p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1647,6 +2265,7 @@ export default function CustomerDetails() {
                 {editingItem ? 'Redigera' : 'Lägg till'} {
                   activeTab === 'users' ? 'användare' : 
                   activeTab === 'equipment' ? 'utrustning' : 
+                  activeTab === 'it' ? 'utrustning' :
                   'Select Care avtal'
                 }
               </h2>
@@ -1702,6 +2321,21 @@ export default function CustomerDetails() {
 
               {(activeTab === 'equipment' || activeTab === 'selectCare') && (
                 <form onSubmit={activeTab === 'equipment' ? handleAddEquipment : handleAddSC} className="space-y-4">
+                  {user?.isAdmin === 1 && (
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-500 uppercase">Säljare (Statistik)</label>
+                      <select 
+                        className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary" 
+                        value={activeTab === 'equipment' ? equipmentForm.sellerId : scForm.sellerId} 
+                        onChange={e => activeTab === 'equipment' ? setEquipmentForm({...equipmentForm, sellerId: Number(e.target.value)}) : setScForm({...scForm, sellerId: Number(e.target.value)})}
+                      >
+                        <option value={user.id}>Mig själv ({user.firstName})</option>
+                        {sellers.map(s => (
+                          <option key={s.id} value={s.id}>{s.firstName} {s.lastName} ({s.role})</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
                       <label className="text-xs font-bold text-slate-500 uppercase">Märke</label>
@@ -1728,22 +2362,85 @@ export default function CustomerDetails() {
                     </div>
                     <div className="space-y-1">
                       <label className="text-xs font-bold text-slate-500 uppercase">Modell</label>
-                      <input required className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary" value={activeTab === 'equipment' ? equipmentForm.model : scForm.model} onChange={e => activeTab === 'equipment' ? setEquipmentForm({...equipmentForm, model: e.target.value}) : setScForm({...scForm, model: e.target.value})} />
+                      <div className="flex gap-2">
+                        <select 
+                          required 
+                          className="flex-1 px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary"
+                          value={activeTab === 'equipment' ? equipmentForm.model : scForm.model}
+                          onChange={e => activeTab === 'equipment' ? setEquipmentForm({...equipmentForm, model: e.target.value}) : setScForm({...scForm, model: e.target.value})}
+                        >
+                          <option value="">Välj modell</option>
+                          {suggestions.models.map(m => <option key={m} value={m}>{m}</option>)}
+                        </select>
+                      </div>
+                      <div className="flex gap-2 mt-2">
+                        <input 
+                          placeholder="Ny modell..." 
+                          className="flex-1 px-4 py-1 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+                          value={newModel}
+                          onChange={e => setNewModel(e.target.value)}
+                        />
+                        <button type="button" onClick={handleAddModel} className="px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-lg text-xs font-bold">Lägg till</button>
+                      </div>
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
                       <label className="text-xs font-bold text-slate-500 uppercase">Färg</label>
-                      <input required className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary" value={activeTab === 'equipment' ? equipmentForm.color : scForm.color} onChange={e => activeTab === 'equipment' ? setEquipmentForm({...equipmentForm, color: e.target.value}) : setScForm({...scForm, color: e.target.value})} />
+                      <div className="flex gap-2">
+                        <select 
+                          required 
+                          className="flex-1 px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary"
+                          value={activeTab === 'equipment' ? equipmentForm.color : scForm.color}
+                          onChange={e => activeTab === 'equipment' ? setEquipmentForm({...equipmentForm, color: e.target.value}) : setScForm({...scForm, color: e.target.value})}
+                        >
+                          <option value="">Välj färg</option>
+                          {suggestions.colors.map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </div>
+                      <div className="flex gap-2 mt-2">
+                        <input 
+                          placeholder="Ny färg..." 
+                          className="flex-1 px-4 py-1 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+                          value={newColor}
+                          onChange={e => setNewColor(e.target.value)}
+                        />
+                        <button type="button" onClick={handleAddColor} className="px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-lg text-xs font-bold">Lägg till</button>
+                      </div>
                     </div>
                     <div className="space-y-1">
                       <label className="text-xs font-bold text-slate-500 uppercase">Minne</label>
-                      <input required className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary" value={activeTab === 'equipment' ? equipmentForm.memory : scForm.memory} onChange={e => activeTab === 'equipment' ? setEquipmentForm({...equipmentForm, memory: e.target.value}) : setScForm({...scForm, memory: e.target.value})} />
+                      <div className="flex gap-2">
+                        <select 
+                          required 
+                          className="flex-1 px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary"
+                          value={activeTab === 'equipment' ? equipmentForm.memory : scForm.memory}
+                          onChange={e => activeTab === 'equipment' ? setEquipmentForm({...equipmentForm, memory: e.target.value}) : setScForm({...scForm, memory: e.target.value})}
+                        >
+                          <option value="">Välj minne</option>
+                          {suggestions.memories.map(m => <option key={m} value={m}>{m}</option>)}
+                        </select>
+                      </div>
+                      <div className="flex gap-2 mt-2">
+                        <input 
+                          placeholder="Nytt minne..." 
+                          className="flex-1 px-4 py-1 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+                          value={newMemory}
+                          onChange={e => setNewMemory(e.target.value)}
+                        />
+                        <button type="button" onClick={handleAddMemory} className="px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-lg text-xs font-bold">Lägg till</button>
+                      </div>
                     </div>
                   </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-500 uppercase">IMEI / Serienummer</label>
-                    <input required className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary" value={activeTab === 'equipment' ? equipmentForm.imei : scForm.imei} onChange={e => activeTab === 'equipment' ? setEquipmentForm({...equipmentForm, imei: e.target.value}) : setScForm({...scForm, imei: e.target.value})} />
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-500 uppercase">IMEI / Serienummer</label>
+                      <input required className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary" value={activeTab === 'equipment' ? equipmentForm.imei : scForm.imei} onChange={e => activeTab === 'equipment' ? setEquipmentForm({...equipmentForm, imei: e.target.value}) : setScForm({...scForm, imei: e.target.value})} />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-500 uppercase">Kollinummer</label>
+                      <input className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary" value={activeTab === 'equipment' ? equipmentForm.trackingNumber : scForm.trackingNumber} onChange={e => activeTab === 'equipment' ? setEquipmentForm({...equipmentForm, trackingNumber: e.target.value}) : setScForm({...scForm, trackingNumber: e.target.value})} />
+                    </div>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
@@ -1864,12 +2561,211 @@ export default function CustomerDetails() {
                       </div>
                     </>
                   )}
+                  {activeTab === 'equipment' && (
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-500 uppercase">Noteringar</label>
+                      <textarea 
+                        className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary resize-none" 
+                        rows={3}
+                        value={equipmentForm.notes} 
+                        onChange={e => setEquipmentForm({...equipmentForm, notes: e.target.value})} 
+                        placeholder="Skriv några noteringar..."
+                      />
+                    </div>
+                  )}
                   <button type="submit" className="w-full py-3 bg-primary text-primary-foreground font-bold rounded-xl mt-4">Spara {activeTab === 'equipment' ? 'utrustning' : 'avtal'}</button>
+                </form>
+              )}
+
+              {activeTab === 'it' && (
+                <form onSubmit={handleAddITEquipment} className="space-y-4">
+                  {user?.isAdmin === 1 && (
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-500 uppercase">Säljare (Statistik)</label>
+                      <select 
+                        className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary" 
+                        value={itForm.sellerId} 
+                        onChange={e => setItForm({...itForm, sellerId: Number(e.target.value)})}
+                      >
+                        <option value={user.id}>Mig själv ({user.firstName})</option>
+                        {sellers.map(s => (
+                          <option key={s.id} value={s.id}>{s.firstName} {s.lastName} ({s.role})</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Enhetsnamn</label>
+                    <input 
+                      required 
+                      className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary" 
+                      value={itForm.deviceName} 
+                      onChange={e => setItForm({...itForm, deviceName: e.target.value})} 
+                      placeholder="T.ex. Ronnys Dator, Kontorsskrivare..."
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-500 uppercase">Märke</label>
+                      <div className="flex gap-2">
+                        <select 
+                          required 
+                          className="flex-1 px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary"
+                          value={itForm.brand}
+                          onChange={e => setItForm({...itForm, brand: e.target.value})}
+                        >
+                          <option value="">Välj märke</option>
+                          {itSuggestions.brands.map(b => <option key={b} value={b}>{b}</option>)}
+                        </select>
+                      </div>
+                      <div className="flex gap-2 mt-2">
+                        <input 
+                          placeholder="Nytt märke..." 
+                          className="flex-1 px-4 py-1 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+                          value={newBrand}
+                          onChange={e => setNewBrand(e.target.value)}
+                        />
+                        <button type="button" onClick={handleAddBrand} className="px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-lg text-xs font-bold">Lägg till</button>
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-500 uppercase">Modell</label>
+                      <div className="flex gap-2">
+                        <select 
+                          required 
+                          className="flex-1 px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary"
+                          value={itForm.model}
+                          onChange={e => setItForm({...itForm, model: e.target.value})}
+                        >
+                          <option value="">Välj modell</option>
+                          {itSuggestions.models.map(m => <option key={m} value={m}>{m}</option>)}
+                        </select>
+                      </div>
+                      <div className="flex gap-2 mt-2">
+                        <input 
+                          placeholder="Ny modell..." 
+                          className="flex-1 px-4 py-1 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+                          value={newModel}
+                          onChange={e => setNewModel(e.target.value)}
+                        />
+                        <button type="button" onClick={handleAddModel} className="px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-lg text-xs font-bold">Lägg till</button>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-500 uppercase">Minne</label>
+                      <div className="flex gap-2">
+                        <select 
+                          className="flex-1 px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary"
+                          value={itForm.memory}
+                          onChange={e => setItForm({...itForm, memory: e.target.value})}
+                        >
+                          <option value="">Välj minne (valfritt)</option>
+                          {itSuggestions.memory.map(m => <option key={m} value={m}>{m}</option>)}
+                        </select>
+                      </div>
+                      <div className="flex gap-2 mt-2">
+                        <input 
+                          placeholder="Nytt minne..." 
+                          className="flex-1 px-4 py-1 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+                          value={newMemory}
+                          onChange={e => setNewMemory(e.target.value)}
+                        />
+                        <button type="button" onClick={handleAddMemory} className="px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-lg text-xs font-bold">Lägg till</button>
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-500 uppercase">Serienummer</label>
+                      <input required className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary" value={itForm.serialNumber} onChange={e => setItForm({...itForm, serialNumber: e.target.value})} />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-500 uppercase">Kollinummer</label>
+                      <input className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary" value={itForm.trackingNumber} onChange={e => setItForm({...itForm, trackingNumber: e.target.value})} />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-500 uppercase">Inköpsställe</label>
+                      <div className="flex gap-2">
+                        <select 
+                          required 
+                          className="flex-1 px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary"
+                          value={itForm.purchasePlace}
+                          onChange={e => setItForm({...itForm, purchasePlace: e.target.value})}
+                        >
+                          <option value="">Välj inköpsställe</option>
+                          {itSuggestions.purchasePlaces.map(p => <option key={p} value={p}>{p}</option>)}
+                        </select>
+                      </div>
+                      <div className="flex gap-2 mt-2">
+                        <input 
+                          placeholder="Nytt inköpsställe..." 
+                          className="flex-1 px-4 py-1 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+                          value={newPurchasePlace}
+                          onChange={e => setNewPurchasePlace(e.target.value)}
+                        />
+                        <button type="button" onClick={() => handleAddITPurchasePlace(newPurchasePlace)} className="px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-lg text-xs font-bold">Lägg till</button>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-500 uppercase">Ordernummer</label>
+                      <input required className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary" value={itForm.orderNumber} onChange={e => setItForm({...itForm, orderNumber: e.target.value})} />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-500 uppercase">Inköpsdatum</label>
+                      <input type="date" required className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary" value={itForm.purchaseDate} onChange={e => setItForm({...itForm, purchaseDate: e.target.value})} />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-500 uppercase">Inköpspris</label>
+                      <input type="number" required className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary" value={itForm.purchasePrice} onChange={e => setItForm({...itForm, purchasePrice: Number(e.target.value)})} />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-500 uppercase">Kundpris</label>
+                      <input type="number" required className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary" value={itForm.customerPrice} onChange={e => setItForm({...itForm, customerPrice: Number(e.target.value)})} />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Koppla till användare</label>
+                    <select className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary" value={itForm.userId} onChange={e => setItForm({...itForm, userId: Number(e.target.value)})}>
+                      <option value="0">Välj användare (valfritt)</option>
+                      {customer?.users?.map(u => <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Kommentar</label>
+                    <textarea 
+                      className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary min-h-[80px]"
+                      value={itForm.comment}
+                      onChange={e => setItForm({...itForm, comment: e.target.value})}
+                      placeholder="Ange kommentar..."
+                    />
+                  </div>
+                  <button type="submit" className="w-full py-3 bg-primary text-primary-foreground font-bold rounded-xl mt-4">Spara IT-utrustning</button>
                 </form>
               )}
 
               {activeTab === 'contracts' && (
                 <form onSubmit={handleAddContract} className="space-y-4">
+                  {user?.isAdmin === 1 && (
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-500 uppercase">Säljare (Statistik)</label>
+                      <select 
+                        className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary" 
+                        value={contractForm.sellerId} 
+                        onChange={e => setContractForm({...contractForm, sellerId: Number(e.target.value)})}
+                      >
+                        <option value={user.id}>Mig själv ({user.firstName})</option>
+                        {sellers.map(s => (
+                          <option key={s.id} value={s.id}>{s.firstName} {s.lastName} ({s.role})</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                   <div className="space-y-1">
                     <label className="text-xs font-bold text-slate-500 uppercase">Avtalstyp</label>
                     <select 
@@ -2197,6 +3093,21 @@ export default function CustomerDetails() {
                 </button>
               </div>
               <div className="p-8 space-y-6">
+                {user?.isAdmin === 1 && (
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-slate-700 dark:text-slate-300 ml-1">Säljare (Statistik)</label>
+                    <select 
+                      className="w-full px-5 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl outline-none focus:ring-2 focus:ring-primary transition-all text-slate-900 dark:text-white"
+                      value={drivingLogSellerId}
+                      onChange={(e) => setDrivingLogSellerId(Number(e.target.value))}
+                    >
+                      <option value={user.id}>Mig själv ({user.firstName})</option>
+                      {sellers.map(s => (
+                        <option key={s.id} value={s.id}>{s.firstName} {s.lastName} ({s.role})</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 <div className="space-y-2">
                   <label className="text-sm font-bold text-slate-700 dark:text-slate-300 ml-1">Klistra in data</label>
                   <p className="text-xs text-slate-500 mb-2">Klistra in rader med formatet: Regnr Namn E-post Typ Schema Månadskostnad (tab- eller mellanslagsseparerat)</p>
@@ -2223,6 +3134,98 @@ export default function CustomerDetails() {
                   Spara körjournaler
                 </button>
               </div>
+            </motion.div>
+          </div>
+        )}
+
+        {isEditDrivingLogModalOpen && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }} 
+              animate={{ opacity: 1, scale: 1, y: 0 }} 
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-[32px] shadow-2xl overflow-hidden border border-slate-200 dark:border-slate-800"
+            >
+              <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white">Redigera körjournal</h3>
+                <button onClick={() => setIsEditDrivingLogModalOpen(false)} className="p-2 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition-colors">
+                  <X className="w-5 h-5 text-slate-500" />
+                </button>
+              </div>
+              <form onSubmit={handleUpdateDrivingLog} className="p-8 space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Reg.nr</label>
+                    <input 
+                      required
+                      className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-xl outline-none focus:ring-2 focus:ring-primary transition-all text-slate-900 dark:text-white font-mono uppercase"
+                      value={drivingLogForm.regNo}
+                      onChange={e => setDrivingLogForm({...drivingLogForm, regNo: e.target.value})}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Användare</label>
+                    <input 
+                      required
+                      className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-xl outline-none focus:ring-2 focus:ring-primary transition-all text-slate-900 dark:text-white"
+                      value={drivingLogForm.driverName}
+                      onChange={e => setDrivingLogForm({...drivingLogForm, driverName: e.target.value})}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">E-post</label>
+                  <input 
+                    required
+                    type="email"
+                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-xl outline-none focus:ring-2 focus:ring-primary transition-all text-slate-900 dark:text-white"
+                    value={drivingLogForm.email}
+                    onChange={e => setDrivingLogForm({...drivingLogForm, email: e.target.value})}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Typ av enhet</label>
+                    <input 
+                      className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-xl outline-none focus:ring-2 focus:ring-primary transition-all text-slate-900 dark:text-white"
+                      value={drivingLogForm.deviceType}
+                      onChange={e => setDrivingLogForm({...drivingLogForm, deviceType: e.target.value})}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Schema</label>
+                    <input 
+                      className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-xl outline-none focus:ring-2 focus:ring-primary transition-all text-slate-900 dark:text-white"
+                      value={drivingLogForm.schema}
+                      onChange={e => setDrivingLogForm({...drivingLogForm, schema: e.target.value})}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Månadskostnad</label>
+                  <input 
+                    type="number"
+                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-xl outline-none focus:ring-2 focus:ring-primary transition-all text-slate-900 dark:text-white"
+                    value={drivingLogForm.monthlyFee}
+                    onChange={e => setDrivingLogForm({...drivingLogForm, monthlyFee: parseFloat(e.target.value) || 0})}
+                  />
+                </div>
+                <div className="pt-4 flex justify-end gap-3">
+                  <button 
+                    type="button"
+                    onClick={() => setIsEditDrivingLogModalOpen(false)}
+                    className="px-6 py-3 text-slate-600 dark:text-slate-300 font-bold hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition-colors"
+                  >
+                    Avbryt
+                  </button>
+                  <button 
+                    type="submit"
+                    className="px-8 py-3 bg-primary text-primary-foreground font-bold rounded-xl shadow-lg shadow-primary/20 hover:opacity-90 transition-opacity"
+                  >
+                    Spara ändringar
+                  </button>
+                </div>
+              </form>
             </motion.div>
           </div>
         )}

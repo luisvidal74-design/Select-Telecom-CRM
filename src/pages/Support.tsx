@@ -16,7 +16,8 @@ import {
   X,
   Send,
   Smartphone,
-  History
+  History,
+  Bell
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
@@ -60,8 +61,14 @@ export default function Support() {
   }, [user]);
 
   const fetchTickets = async () => {
+    if (!user) return;
     try {
-      const res = await fetch(`/api/support-tickets?userId=${user?.id}&isAdmin=${user?.isAdmin}&role=${user?.role}`);
+      const params = new URLSearchParams({
+        userId: user.id.toString(),
+        isAdmin: user.isAdmin ? 'true' : 'false',
+        role: user.role || ''
+      });
+      const res = await fetch(`/api/support-tickets?${params}`);
       const data = await res.json();
       setTickets(data);
     } catch (error) {
@@ -88,10 +95,18 @@ export default function Support() {
   };
 
   const fetchTicketDetails = async (id: number) => {
+    if (!user) return;
     try {
-      const res = await fetch(`/api/support-tickets/${id}`);
+      const params = new URLSearchParams({
+        userId: user.id.toString(),
+        isAdmin: user.isAdmin ? 'true' : 'false',
+        role: user.role || ''
+      });
+      const res = await fetch(`/api/support-tickets/${id}?${params}`);
       const data = await res.json();
       setSelectedTicket(data);
+      // Dispatch event to refresh notification count in Layout
+      window.dispatchEvent(new CustomEvent('refresh-ticket-count'));
     } catch (error) {
       console.error('Failed to fetch ticket details:', error);
     }
@@ -106,7 +121,9 @@ export default function Support() {
         body: JSON.stringify({
           ...formData,
           customerId: Number(formData.customerId),
-          createdBy: user?.id
+          createdBy: user?.id,
+          isAdmin: user?.isAdmin,
+          role: user?.role
         })
       });
 
@@ -120,6 +137,8 @@ export default function Support() {
           status: 'Registrerad'
         });
         fetchTickets();
+        // Dispatch event to refresh notification count in Layout
+        window.dispatchEvent(new CustomEvent('refresh-ticket-count'));
       }
     } catch (error) {
       console.error('Failed to create ticket:', error);
@@ -145,6 +164,7 @@ export default function Support() {
         setNewLogNote('');
         fetchTicketDetails(selectedTicket.id);
         fetchTickets(); // Refresh list to update 'updatedAt'
+        window.dispatchEvent(new CustomEvent('refresh-ticket-count'));
       }
     } catch (error) {
       console.error('Failed to add log:', error);
@@ -169,9 +189,33 @@ export default function Support() {
       if (res.ok) {
         fetchTicketDetails(selectedTicket.id);
         fetchTickets();
+        window.dispatchEvent(new CustomEvent('refresh-ticket-count'));
       }
     } catch (error) {
       console.error('Failed to update status:', error);
+    }
+  };
+
+  const handleTagSeller = async () => {
+    if (!selectedTicket || !selectedTicket.responsibleSeller) return;
+
+    try {
+      const res = await fetch(`/api/support-tickets/${selectedTicket.id}/tag-seller`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user?.id,
+          sellerName: selectedTicket.responsibleSeller
+        })
+      });
+
+      if (res.ok) {
+        fetchTicketDetails(selectedTicket.id);
+        fetchTickets();
+        window.dispatchEvent(new CustomEvent('refresh-ticket-count'));
+      }
+    } catch (error) {
+      console.error('Failed to tag seller:', error);
     }
   };
 
@@ -230,10 +274,13 @@ export default function Support() {
                     animate={{ opacity: 1, y: 0 }}
                     onClick={() => fetchTicketDetails(ticket.id)}
                     className={cn(
-                      "p-4 bg-white dark:bg-slate-900 rounded-2xl border cursor-pointer transition-all hover:shadow-md group",
+                      "p-4 bg-white dark:bg-slate-900 rounded-2xl border cursor-pointer transition-all hover:shadow-md group relative",
                       selectedTicket?.id === ticket.id ? "border-blue-600 ring-1 ring-blue-600" : "border-slate-200 dark:border-slate-800"
                     )}
                   >
+                    {((user?.isAdmin || user?.role === 'Administratör' || user?.role === 'Support' ? ticket.isReadByAdmin === 0 : ticket.isReadByCreator === 0) || (ticket.isTagged === 1 && ticket.taggedUserId === user?.id)) && (
+                      <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full border-2 border-white dark:border-slate-950 animate-pulse z-10" />
+                    )}
                     <div className="flex items-start justify-between gap-4">
                       <div className="space-y-1 flex-1">
                         <div className="flex items-center gap-2">
@@ -303,25 +350,41 @@ export default function Support() {
                       <p className="text-sm text-slate-600 dark:text-slate-400 mt-2">{selectedTicket.description}</p>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-2xl">
-                        <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest mb-1">Status</p>
-                        <select 
-                          disabled={!canEdit}
-                          value={selectedTicket.status}
-                          onChange={(e) => handleUpdateStatus(e.target.value as any)}
-                          className="w-full bg-transparent text-sm font-bold text-slate-900 dark:text-white outline-none disabled:cursor-not-allowed"
-                        >
-                          {Object.keys(STATUS_CONFIG).map(s => (
-                            <option key={s} value={s}>{s}</option>
-                          ))}
-                        </select>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-2xl">
+                          <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest mb-1">Status</p>
+                          <select 
+                            disabled={!canEdit}
+                            value={selectedTicket.status}
+                            onChange={(e) => handleUpdateStatus(e.target.value as any)}
+                            className="w-full bg-transparent text-sm font-bold text-slate-900 dark:text-white outline-none disabled:cursor-not-allowed"
+                          >
+                            {Object.keys(STATUS_CONFIG).map(s => (
+                              <option key={s} value={s}>{s}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-2xl">
+                          <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest mb-1">Prioritet</p>
+                          <p className="text-sm font-bold text-slate-900 dark:text-white">{selectedTicket.priority}</p>
+                        </div>
                       </div>
-                      <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-2xl">
-                        <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest mb-1">Prioritet</p>
-                        <p className="text-sm font-bold text-slate-900 dark:text-white">{selectedTicket.priority}</p>
+
+                      <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl flex items-center justify-between">
+                        <div>
+                          <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest mb-1">Ansvarig säljare</p>
+                          <p className="text-sm font-bold text-slate-900 dark:text-white">{selectedTicket.responsibleSeller || 'Ej angiven'}</p>
+                        </div>
+                        {selectedTicket.responsibleSeller && canEdit && (
+                          <button
+                            onClick={handleTagSeller}
+                            className="flex items-center gap-2 px-3 py-1.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-lg hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors text-[10px] font-bold uppercase tracking-wider"
+                          >
+                            <Bell className="w-3.5 h-3.5" />
+                            Tagga säljare
+                          </button>
+                        )}
                       </div>
-                    </div>
 
                     {selectedTicket.deviceName && (
                       <div className="space-y-3">

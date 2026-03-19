@@ -24,7 +24,7 @@ import NotificationModal from './NotificationModal';
 import { SelectCare } from '../types';
 
 export default function Layout() {
-  const { user, loading, logout } = useAuth();
+  const { user, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const { activeUsers } = usePresence();
   const location = useLocation();
@@ -34,12 +34,7 @@ export default function Layout() {
   const [expiringAgreements, setExpiringAgreements] = useState<(SelectCare & { customerName: string })[]>([]);
   const [expiringContracts, setExpiringContracts] = useState<(any & { customerName: string })[]>([]);
   const [pendingUsersCount, setPendingUsersCount] = useState(0);
-
-  useEffect(() => {
-    if (!loading && !user && location.pathname !== '/login' && location.pathname !== '/register') {
-      navigate('/login');
-    }
-  }, [user, loading, navigate, location.pathname]);
+  const [newTicketsCount, setNewTicketsCount] = useState(0);
 
   useEffect(() => {
     const fetchExpiring = async () => {
@@ -78,19 +73,42 @@ export default function Layout() {
     }
   }, [user]);
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-      </div>
-    );
-  }
+  useEffect(() => {
+    if (user) {
+      const fetchNewTicketsCount = async () => {
+        try {
+          const res = await fetch(`/api/support-tickets/new/count?userId=${user.id}&isAdmin=${user.isAdmin}&role=${user.role || ''}`);
+          const data = await res.json();
+          setNewTicketsCount(data.count || 0);
+        } catch (error) {
+          console.error('Failed to fetch new tickets count:', error);
+        }
+      };
+      fetchNewTicketsCount();
+
+      const handleRefresh = () => fetchNewTicketsCount();
+      window.addEventListener('refresh-ticket-count', handleRefresh);
+
+      const interval = setInterval(fetchNewTicketsCount, 60 * 1000); // Check every minute
+      return () => {
+        clearInterval(interval);
+        window.removeEventListener('refresh-ticket-count', handleRefresh);
+      };
+    }
+  }, [user]);
 
   const navigation = [
     { name: 'Översikt', href: '/', icon: LayoutDashboard },
-    { name: 'Kunder', href: '/kunder', icon: UsersIcon },
-    { name: 'Kalender', href: '/kalender', icon: CalendarIcon },
-    { name: 'Support', href: '/support', icon: ShieldCheck },
+    ...(user?.role !== 'Kund' ? [
+      { name: 'Kunder', href: '/kunder', icon: UsersIcon },
+      { name: 'Kalender', href: '/kalender', icon: CalendarIcon }
+    ] : []),
+    { 
+      name: 'Supportärende', 
+      href: '/support', 
+      icon: ShieldCheck,
+      badge: newTicketsCount > 0 ? newTicketsCount : undefined
+    },
     ...(user?.isAdmin ? [{ 
       name: 'Användare', 
       href: '/anvandare', 

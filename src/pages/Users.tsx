@@ -306,7 +306,7 @@ export default function Users() {
                     onClick={() => setEditForm({...editForm, isAdmin: editForm.isAdmin ? 0 : 1})}
                     className={cn(
                       "w-12 h-6 rounded-full transition-colors relative",
-                      editForm.isAdmin ? "bg-primary" : "bg-slate-300 dark:bg-slate-700"
+                      editForm.isAdmin ? "bg-blue-600" : "bg-slate-300 dark:bg-slate-700"
                     )}
                   >
                     <div className={cn(
@@ -316,19 +316,19 @@ export default function Users() {
                   </button>
                 </div>
 
-                <div className="pt-4 flex gap-3">
+                <div className="pt-6 flex items-center justify-end gap-3 border-t border-slate-100 dark:border-slate-800 -mx-6 px-6 mt-6">
                   <button 
                     type="button"
                     onClick={() => setIsEditModalOpen(false)}
-                    className="flex-1 py-3 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-2xl font-bold hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                    className="px-6 py-2.5 text-slate-600 dark:text-slate-400 font-bold hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors"
                   >
                     Avbryt
                   </button>
                   <button 
                     type="submit"
-                    className="flex-1 py-3 bg-primary text-white rounded-2xl font-bold hover:opacity-90 transition-opacity"
+                    className="px-8 py-2.5 bg-blue-700 text-white rounded-xl font-bold hover:bg-blue-800 transition-all shadow-lg shadow-blue-700/20"
                   >
-                    Spara ändringar
+                    Spara
                   </button>
                 </div>
               </form>

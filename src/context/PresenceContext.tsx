@@ -14,6 +14,10 @@ export function PresenceProvider({ children }: { children: React.ReactNode }) {
   const socketRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
+    if (user && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+
     if (!user) {
       if (socketRef.current) {
         socketRef.current.close();
@@ -36,6 +40,16 @@ export function PresenceProvider({ children }: { children: React.ReactNode }) {
         const data = JSON.parse(event.data);
         if (data.type === 'presence') {
           setActiveUsers(data.users);
+        } else if (data.type === 'notification') {
+          // Simple browser notification if supported, otherwise alert
+          if (Notification.permission === 'granted') {
+            new Notification('Select Telecom Support', {
+              body: data.message,
+              icon: 'https://usercontent.one/wp/rejban.se/wp-content/uploads/2025/04/Select-Telecom-Logotyp.png'
+            });
+          } else {
+            alert(data.message);
+          }
         }
       } catch (e) {
         console.error('Presence WS Error:', e);
