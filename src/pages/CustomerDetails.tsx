@@ -30,11 +30,29 @@ import {
   Download,
   Eye,
   FileIcon,
-  Loader2
+  Loader2,
+  Ticket,
+  AlertCircle,
+  Send
 } from 'lucide-react';
-import { Customer, CustomerUser, Equipment, ITEquipment, SelectCare, Brand, DrivingLog, Contract, ContractFile, User } from '../types';
+import { Customer, CustomerUser, Equipment, ITEquipment, SelectCare, Brand, DrivingLog, Contract, ContractFile, User, SupportTicket } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
+
+const STATUS_CONFIG = {
+  'Registrerad': { color: 'text-blue-600 bg-blue-50 border-blue-100', icon: Ticket },
+  'Väntar': { color: 'text-amber-600 bg-amber-50 border-amber-100', icon: Clock },
+  'Skickat för reparation': { color: 'text-purple-600 bg-purple-50 border-purple-100', icon: Send },
+  'Under reparation': { color: 'text-indigo-600 bg-indigo-50 border-indigo-100', icon: Smartphone },
+  'Avslutad': { color: 'text-emerald-600 bg-emerald-50 border-emerald-100', icon: CheckCircle2 }
+};
+
+const PRIORITY_CONFIG = {
+  'Låg': 'bg-slate-100 text-slate-600',
+  'Normal': 'bg-blue-100 text-blue-600',
+  'Hög': 'bg-orange-100 text-orange-600',
+  'Kritisk': 'bg-red-100 text-red-600'
+};
 
 export default function CustomerDetails() {
   const { id } = useParams();
@@ -42,7 +60,8 @@ export default function CustomerDetails() {
   const location = useLocation();
   const { user } = useAuth();
   const [customer, setCustomer] = useState<Customer | null>(null);
-  const [activeTab, setActiveTab] = useState<'users' | 'equipment' | 'it' | 'selectCare' | 'drivingLogs' | 'contracts'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'equipment' | 'it' | 'o365' | 'selectCare' | 'drivingLogs' | 'contracts' | 'support'>('users');
+  const [supportTickets, setSupportTickets] = useState<SupportTicket[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDrivingLogModalOpen, setIsDrivingLogModalOpen] = useState(false);
   const [isEditDrivingLogModalOpen, setIsEditDrivingLogModalOpen] = useState(false);
@@ -59,14 +78,16 @@ export default function CustomerDetails() {
   const [newColor, setNewColor] = useState('');
   const [newMemory, setNewMemory] = useState('');
   const [newPurchasePlace, setNewPurchasePlace] = useState('');
-  const [selectedSummary, setSelectedSummary] = useState<{ type: 'user' | 'equipment' | 'it' | 'selectCare' | 'selectCareHistory' | 'contract' | 'drivingLog', item: any } | null>(null);
-  const [editingItem, setEditingItem] = useState<{ type: 'user' | 'equipment' | 'it' | 'selectCare' | 'contracts' | 'drivingLogs', id: number } | null>(null);
+  const [newO365Type, setNewO365Type] = useState('');
+  const [selectedSummary, setSelectedSummary] = useState<{ type: 'user' | 'equipment' | 'it' | 'o365' | 'selectCare' | 'selectCareHistory' | 'contract' | 'drivingLog', item: any } | null>(null);
+  const [editingItem, setEditingItem] = useState<{ type: 'user' | 'equipment' | 'it' | 'o365' | 'selectCare' | 'contracts' | 'drivingLogs', id: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: string, id: number } | null>(null);
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [viewingPdf, setViewingPdf] = useState<{ url: string; name: string } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [sellers, setSellers] = useState<User[]>([]);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -74,10 +95,12 @@ export default function CustomerDetails() {
   const [equipmentForm, setEquipmentForm] = useState({ brand: '', model: '', color: '', memory: '', imei: '', purchasePlace: '', orderNumber: '', purchaseDate: '', purchasePrice: 0, customerPrice: 0, sellerId: 0, userId: 0, trackingNumber: '', notes: '' });
   const [itForm, setItForm] = useState({ deviceName: '', brand: '', model: '', memory: '', serialNumber: '', trackingNumber: '', purchasePlace: '', orderNumber: '', purchaseDate: '', purchasePrice: 0, customerPrice: 0, sellerId: 0, userId: 0, comment: '' });
   const [scForm, setScForm] = useState({ brand: '', model: '', color: '', memory: '', imei: '', purchasePlace: '', orderNumber: '', purchaseDate: '', purchasePrice: 0, monthlyFee: 0, userId: 0, contractPeriod: 24, endDate: '', siemensContractNumber: '', sellerId: 0, trackingNumber: '' });
+  const [o365Form, setO365Form] = useState({ licenseType: '', email: '', password: '', price: 0, startDate: '', bindingPeriod: 12, endDate: '', userId: 0, notes: '' });
+  const [o365LicenseTypes, setO365LicenseTypes] = useState<{ id: number, name: string }[]>([]);
   const [suggestions, setSuggestions] = useState<{ brands: string[], models: string[], colors: string[], memories: string[] }>({ brands: [], models: [], colors: [], memories: [] });
   const [itSuggestions, setItSuggestions] = useState<{ brands: string[], models: string[], memory: string[], purchasePlaces: string[] }>({ brands: [], models: [], memory: [], purchasePlaces: [] });
   const [customerForm, setCustomerForm] = useState({ name: '', orgNumber: '', address: '', city: '', zipCode: '', contactPerson: '', contactPhone: '', responsibleSeller: '', website: '', services: '' });
-  const [drivingLogForm, setDrivingLogForm] = useState({ regNo: '', driverName: '', email: '', deviceType: '', schema: '', monthlyFee: 0 });
+  const [drivingLogForm, setDrivingLogForm] = useState({ regNo: '', driverName: '', email: '', deviceType: '', schema: '', monthlyFee: 0, sellerId: 0 });
   const [drivingLogSellerId, setDrivingLogSellerId] = useState<number>(0);
   const [contractForm, setContractForm] = useState({
     type: 'Telefoniavtal',
@@ -126,9 +149,18 @@ export default function CustomerDetails() {
   }, [contractForm.startDate, contractForm.contractPeriod]);
 
   useEffect(() => {
+    if (o365Form.startDate && o365Form.bindingPeriod) {
+      const newEndDate = calculateEndDate(o365Form.startDate, o365Form.bindingPeriod);
+      if (newEndDate !== o365Form.endDate) {
+        setO365Form(prev => ({ ...prev, endDate: newEndDate }));
+      }
+    }
+  }, [o365Form.startDate, o365Form.bindingPeriod]);
+
+  useEffect(() => {
     const searchParams = new URLSearchParams(location.search);
     const tab = searchParams.get('tab');
-    if (tab && ['users', 'equipment', 'it', 'selectCare', 'drivingLogs', 'contracts'].includes(tab)) {
+    if (tab && ['users', 'equipment', 'it', 'o365', 'selectCare', 'drivingLogs', 'contracts', 'support'].includes(tab)) {
       setActiveTab(tab as any);
     }
   }, [location.search]);
@@ -140,18 +172,25 @@ export default function CustomerDetails() {
       isAdmin: user.isAdmin ? 'true' : 'false',
       role: user.role || ''
     });
-    const [custRes, brandRes, logsRes, contractsRes, usersRes] = await Promise.all([
+    const [custRes, brandRes, logsRes, contractsRes, usersRes, ticketsRes, o365TypesRes] = await Promise.all([
       fetch(`/api/customers/${id}?${params}`),
       fetch('/api/brands'),
       fetch(`/api/customers/${id}/driving-logs`),
       fetch(`/api/contracts?customerId=${id}`),
-      fetch('/api/users')
+      fetch('/api/users'),
+      fetch(`/api/support-tickets?customerId=${id}&${params}`),
+      fetch('/api/o365-licenses/types')
     ]);
     const custData = await custRes.json();
     const brandData = await brandRes.json();
     const logsData = await logsRes.json();
     const contractsData = await contractsRes.json();
     const usersData = await usersRes.json();
+    const ticketsData = await ticketsRes.json();
+    const o365TypesData = await o365TypesRes.json();
+    
+    setSupportTickets(ticketsData);
+    setO365LicenseTypes(o365TypesData);
     const sellerUsers = usersData.filter((u: User) => 
       u.status === 'approved' && 
       (u.role?.toLowerCase().includes('säljare') || (!u.isAdmin && !u.role))
@@ -506,7 +545,31 @@ export default function CustomerDetails() {
     }
   };
 
-  const handleEdit = (type: 'user' | 'equipment' | 'it' | 'selectCare' | 'contracts' | 'drivingLogs', item: any) => {
+  const handleAddO365License = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const url = editingItem 
+      ? `/api/o365-licenses/${editingItem.id}` 
+      : `/api/o365-licenses`;
+    const method = editingItem ? 'PUT' : 'POST';
+
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...o365Form, customerId: id }),
+    });
+    if (res.ok) {
+      fetchData();
+      setIsModalOpen(false);
+      setEditingItem(null);
+      setO365Form({ licenseType: '', email: '', password: '', price: 0, startDate: '', bindingPeriod: 12, endDate: '', userId: 0, notes: '' });
+      setNewO365Type('');
+    } else {
+      const errorData = await res.json();
+      alert(`Fel vid sparning: ${errorData.error || res.statusText}`);
+    }
+  };
+
+  const handleEdit = (type: 'user' | 'equipment' | 'it' | 'o365' | 'selectCare' | 'contracts' | 'drivingLogs', item: any) => {
     setEditingItem({ type, id: item.id });
     if (type === 'user') {
       setUserForm({ 
@@ -575,6 +638,19 @@ export default function CustomerDetails() {
         trackingNumber: item.trackingNumber || ''
       });
       setIsModalOpen(true);
+    } else if (type === 'o365') {
+      setO365Form({
+        licenseType: item.licenseType,
+        email: item.email,
+        password: item.password || '',
+        price: item.price || 0,
+        startDate: item.startDate,
+        bindingPeriod: item.bindingPeriod,
+        endDate: item.endDate,
+        userId: item.userId || 0,
+        notes: item.notes || ''
+      });
+      setIsModalOpen(true);
     } else if (type === 'contracts') {
       setContractForm({
         type: item.type,
@@ -593,7 +669,8 @@ export default function CustomerDetails() {
         email: item.email,
         deviceType: item.deviceType || '',
         schema: item.schema || '',
-        monthlyFee: item.monthlyFee || 0
+        monthlyFee: item.monthlyFee || 0,
+        sellerId: item.sellerId || 0
       });
       setIsEditDrivingLogModalOpen(true);
     }
@@ -715,7 +792,7 @@ export default function CustomerDetails() {
     const res = await fetch(`/api/driving-logs/${editingItem.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(drivingLogForm)
+      body: JSON.stringify({ ...drivingLogForm, sellerId: drivingLogForm.sellerId || user?.id })
     });
 
     if (res.ok) {
@@ -737,13 +814,15 @@ export default function CustomerDetails() {
       </button>
 
       <div className="bg-white dark:bg-slate-900 w-full min-h-[116px] p-6 md:p-8 mb-8 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800 relative">
-        <button 
-          onClick={() => setIsCustomerModalOpen(true)}
-          className="absolute top-4 right-4 md:top-6 md:right-6 p-2 text-slate-400 hover:text-primary hover:bg-primary/10 rounded-xl transition-all"
-          title="Redigera kunduppgifter"
-        >
-          <Edit2 className="w-5 h-5" />
-        </button>
+        {(user?.isAdmin === 1 || user?.isSupport === 1) && (
+          <button 
+            onClick={() => setIsCustomerModalOpen(true)}
+            className="absolute top-4 right-4 md:top-6 md:right-6 p-2 text-slate-400 hover:text-primary hover:bg-primary/10 rounded-xl transition-all"
+            title="Redigera kunduppgifter"
+          >
+            <Edit2 className="w-5 h-5" />
+          </button>
+        )}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="flex items-center gap-4 md:gap-6">
             <div className="w-16 h-16 md:w-20 md:h-20 bg-primary/10 rounded-2xl flex items-center justify-center flex-shrink-0 overflow-hidden">
@@ -813,9 +892,11 @@ export default function CustomerDetails() {
           { id: 'users', label: 'Användare', icon: UsersIcon },
           { id: 'equipment', label: 'Utrustning', icon: Smartphone },
           { id: 'it', label: 'IT', icon: Monitor },
+          { id: 'o365', label: 'O365 Licenser', icon: Mail },
           { id: 'drivingLogs', label: 'Körjournaler', icon: Calendar },
           { id: 'selectCare', label: 'Select Care', icon: ShieldCheck },
           { id: 'contracts', label: 'Avtal', icon: FileText },
+          { id: 'support', label: 'Supportärenden', icon: Ticket },
         ].filter(tab => user?.role !== 'Kund' || tab.id !== 'contracts').map((tab) => (
           <button
             key={tab.id}
@@ -842,11 +923,16 @@ export default function CustomerDetails() {
             {activeTab === 'users' && 'Användare'}
             {activeTab === 'equipment' && 'Utrustning'}
             {activeTab === 'it' && 'IT-utrustning'}
+            {activeTab === 'o365' && 'O365 Licenser'}
             {activeTab === 'selectCare' && 'Select Care Avtal'}
             {activeTab === 'contracts' && 'Avtal'}
             {activeTab === 'drivingLogs' && 'Körjournaler'}
+            {activeTab === 'support' && 'Supportärenden'}
           </h2>
-        {user?.role !== 'Kund' && (user?.isAdmin === 1 || user?.isSupport === 1 || customer?.responsibleSeller === `${user?.firstName} ${user?.lastName}`) && (
+        {user?.role !== 'Kund' && (
+          user?.isAdmin === 1 || 
+          ((user?.isSupport === 1 || customer?.responsibleSeller === `${user?.firstName} ${user?.lastName}`) && !['users', 'equipment', 'it', 'o365', 'drivingLogs'].includes(activeTab))
+        ) && activeTab !== 'support' && (
           <button 
             onClick={() => {
               if (activeTab === 'drivingLogs') {
@@ -873,6 +959,7 @@ export default function CustomerDetails() {
             {activeTab === 'users' && 'Lägg till användare'}
             {activeTab === 'equipment' && 'Lägg till utrustning'}
             {activeTab === 'it' && 'Lägg till utrustning'}
+            {activeTab === 'o365' && 'Lägg till licens'}
             {activeTab === 'selectCare' && 'Lägg till avtal'}
             {activeTab === 'contracts' && 'Nytt avtal'}
             {activeTab === 'drivingLogs' && 'Uppdatera lista'}
@@ -917,7 +1004,7 @@ export default function CustomerDetails() {
                       </div>
                     </div>
                     <div className="flex items-center justify-end gap-1 border-t md:border-t-0 pt-2 md:pt-0 border-slate-50 dark:border-slate-800">
-                      {user?.role !== 'Kund' && (user?.isAdmin === 1 || user?.isSupport === 1 || customer?.responsibleSeller === `${user?.firstName} ${user?.lastName}`) && (
+                      {user?.isAdmin === 1 && (
                         <>
                           <button 
                             onClick={(e) => { e.stopPropagation(); handleEdit('user', cUser); }} 
@@ -987,7 +1074,7 @@ export default function CustomerDetails() {
                       </div>
                     </div>
                     <div className="flex items-center justify-end gap-1 border-t md:border-t-0 pt-2 md:pt-0 border-slate-50 dark:border-slate-800">
-                      {user?.role !== 'Kund' && (user?.isAdmin === 1 || user?.isSupport === 1 || customer?.responsibleSeller === `${user?.firstName} ${user?.lastName}`) && (
+                      {user?.isAdmin === 1 && (
                         <>
                           <button 
                             onClick={(e) => { e.stopPropagation(); handleEdit('equipment', eq); }} 
@@ -1057,7 +1144,7 @@ export default function CustomerDetails() {
                       </div>
                     </div>
                     <div className="flex items-center justify-end gap-1 border-t md:border-t-0 pt-2 md:pt-0 border-slate-50 dark:border-slate-800">
-                      {(user?.isAdmin === 1 || user?.isSupport === 1 || customer?.responsibleSeller === `${user?.firstName} ${user?.lastName}`) && (
+                      {user?.isAdmin === 1 && (
                         <>
                           <button 
                             onClick={(e) => { e.stopPropagation(); handleEdit('it', it); }} 
@@ -1076,6 +1163,79 @@ export default function CustomerDetails() {
                     </div>
                   </div>
                 ))}
+              </motion.div>
+            )}
+
+            {activeTab === 'o365' && (
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-2">
+                {customer.o365Licenses && customer.o365Licenses.length > 0 ? (
+                  customer.o365Licenses.map(license => (
+                    <div 
+                      key={license.id} 
+                      onClick={() => setSelectedSummary({ type: 'o365', item: license })}
+                      className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-transparent hover:border-primary transition-all cursor-pointer group shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4"
+                    >
+                      <div className="flex items-center gap-4 flex-1 min-w-0">
+                        <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center flex-shrink-0">
+                          <Mail className="w-5 h-5 text-primary" />
+                        </div>
+                        <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 items-center">
+                          <div>
+                            <h4 className="font-bold text-slate-900 dark:text-white whitespace-normal leading-tight">{license.licenseType}</h4>
+                            <p className="text-xs text-slate-500 truncate">{license.email}</p>
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Startdatum</span>
+                            <span className="text-xs text-slate-600 dark:text-slate-400 truncate">{license.startDate}</span>
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Slutdatum</span>
+                            <span className={cn("text-xs font-bold truncate", getExpirationStatus(license.endDate) === 'expired' ? 'text-red-500' : 'text-slate-600 dark:text-slate-400')}>
+                              {license.endDate}
+                            </span>
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Användare</span>
+                            <span className="text-xs text-slate-600 dark:text-slate-400 truncate">{license.userName || 'Ej kopplad'}</span>
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Pris</span>
+                            <span className="text-xs font-bold text-primary">{license.price?.toLocaleString() || 0} kr</span>
+                          </div>
+                          {license.notes && (
+                            <div className="flex flex-col md:col-span-5 mt-2 p-2 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
+                              <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Noteringar</span>
+                              <span className="text-xs text-slate-600 dark:text-slate-400 whitespace-pre-wrap">{license.notes}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-end gap-1 border-t md:border-t-0 pt-2 md:pt-0 border-slate-50 dark:border-slate-800">
+                        {user?.isAdmin === 1 && (
+                          <>
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); handleEdit('o365', license); }} 
+                              className="p-2 text-slate-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ type: 'o365-licenses', id: license.id }); }} 
+                              className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 rounded-lg transition-colors"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-12 bg-white dark:bg-slate-900 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800">
+                    <Mail className="w-12 h-12 text-slate-200 mx-auto mb-4" />
+                    <p className="text-slate-500">Inga O365 licenser registrerade</p>
+                  </div>
+                )}
               </motion.div>
             )}
 
@@ -1431,20 +1591,22 @@ export default function CustomerDetails() {
                                 {log.monthlyFee ? `${log.monthlyFee.toLocaleString()} kr` : '-'}
                               </td>
                               <td className="py-3 px-4 text-right">
-                                <div className="flex items-center justify-end gap-2">
-                                  <button 
-                                    onClick={() => handleEdit('drivingLogs', log)}
-                                    className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-400 hover:text-primary transition-colors"
-                                  >
-                                    <Edit2 className="w-4 h-4" />
-                                  </button>
-                                  <button 
-                                    onClick={() => handleDelete('driving-logs', log.id)}
-                                    className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-400 hover:text-red-500 transition-colors"
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </button>
-                                </div>
+                                {user?.isAdmin === 1 && (
+                                  <div className="flex items-center justify-end gap-2">
+                                    <button 
+                                      onClick={() => handleEdit('drivingLogs', log)}
+                                      className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-400 hover:text-primary transition-colors"
+                                    >
+                                      <Edit2 className="w-4 h-4" />
+                                    </button>
+                                    <button 
+                                      onClick={() => handleDelete('driving-logs', log.id)}
+                                      className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-400 hover:text-red-500 transition-colors"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                )}
                               </td>
                             </tr>
                           ))
@@ -1457,6 +1619,88 @@ export default function CustomerDetails() {
                     </table>
                   </div>
                 </div>
+              </motion.div>
+            )}
+            {activeTab === 'support' && (
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-lg font-bold text-slate-900 dark:text-white">Supportärenden</h3>
+                    <p className="text-sm text-slate-500">Här visas de senaste supportärendena för {customer.name}</p>
+                  </div>
+                  <button
+                    onClick={() => navigate(`/support?customerId=${customer.id}`)}
+                    className="flex items-center gap-2 px-4 py-2 bg-primary/10 text-primary hover:bg-primary/20 rounded-xl transition-all font-bold text-sm"
+                  >
+                    Se alla ärenden
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {supportTickets.length > 0 ? (
+                  <div className="grid grid-cols-1 gap-4">
+                    {supportTickets.slice(0, 6).map((ticket) => {
+                      const status = STATUS_CONFIG[ticket.status as keyof typeof STATUS_CONFIG] || STATUS_CONFIG['Registrerad'];
+                      const StatusIcon = status.icon;
+                      
+                      return (
+                        <div 
+                          key={ticket.id}
+                          onClick={() => navigate(`/support?ticketId=${ticket.id}`)}
+                          className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-primary/50 transition-all cursor-pointer group shadow-sm"
+                        >
+                          <div className="flex items-center justify-between gap-4">
+                            <div className="flex items-center gap-4 flex-1 min-w-0">
+                              <div className={cn("p-2.5 rounded-xl flex-shrink-0", status.color.split(' ')[1])}>
+                                <StatusIcon className={cn("w-5 h-5", status.color.split(' ')[0])} />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <h4 className="font-bold text-slate-900 dark:text-white truncate group-hover:text-primary transition-colors">
+                                    {ticket.title}
+                                  </h4>
+                                  <span className={cn(
+                                    "px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider",
+                                    PRIORITY_CONFIG[ticket.priority as keyof typeof PRIORITY_CONFIG]
+                                  )}>
+                                    {ticket.priority}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-4 text-xs text-slate-500">
+                                  <span className="flex items-center gap-1">
+                                    <Clock className="w-3 h-3" />
+                                    {new Date(ticket.createdAt).toLocaleDateString()}
+                                  </span>
+                                  <span className="flex items-center gap-1">
+                                    <Hash className="w-3 h-3" />
+                                    #{ticket.id}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <div className={cn(
+                                "px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border",
+                                status.color
+                              )}>
+                                {ticket.status}
+                              </div>
+                              <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-primary group-hover:translate-x-1 transition-all" />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-center py-20 bg-white dark:bg-slate-900 rounded-[32px] border border-dashed border-slate-200 dark:border-slate-800">
+                    <div className="w-20 h-20 bg-slate-50 dark:bg-slate-800/50 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <Ticket className="w-10 h-10 text-slate-200" />
+                    </div>
+                    <h4 className="text-lg font-bold text-slate-900 dark:text-white mb-1">Inga supportärenden</h4>
+                    <p className="text-slate-500 max-w-xs mx-auto">Det finns inga registrerade supportärenden för den här kunden än.</p>
+                  </div>
+                )}
               </motion.div>
             )}
           </AnimatePresence>
@@ -1794,6 +2038,33 @@ export default function CustomerDetails() {
                         <p className="text-xs text-slate-500 italic">Inga körjournaler kopplade</p>
                       )}
                     </div>
+
+                    {/* O365 Licenses */}
+                    <div className="space-y-2">
+                      <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">O365 Licenser</p>
+                      {(customer?.o365Licenses?.filter(lic => lic.userId === selectedSummary.item.id)?.length ?? 0) > 0 ? (
+                        customer?.o365Licenses?.filter(lic => lic.userId === selectedSummary.item.id).map(lic => (
+                          <div 
+                            key={lic.id} 
+                            onClick={() => {
+                              setShowPassword(false);
+                              setSelectedSummary({ type: 'o365', item: lic });
+                            }}
+                            className="p-3 bg-blue-50/50 dark:bg-blue-900/10 rounded-xl flex items-center justify-between border border-blue-100 dark:border-blue-900/30 hover:bg-blue-100/50 dark:hover:bg-blue-900/20 transition-all cursor-pointer group"
+                          >
+                            <div>
+                              <p className="text-sm font-bold text-blue-600 dark:text-blue-400">{lic.licenseType}</p>
+                              <p className="text-[10px] text-blue-600/60 dark:text-blue-400/60 font-medium">
+                                {lic.email} • {lic.price} kr • {lic.bindingPeriod} mån • {lic.endDate}
+                              </p>
+                            </div>
+                            <Mail className="w-4 h-4 text-blue-400" />
+                          </div>
+                        ))
+                      ) : (
+                        <p className="text-xs text-slate-500 italic">Inga O365-licenser kopplade</p>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}
@@ -1910,6 +2181,66 @@ export default function CustomerDetails() {
                               : '0'}%)
                           </p>
                         </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {selectedSummary.type === 'o365' && (
+                <div className="space-y-6">
+                  <div className="flex items-center gap-4">
+                    <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center">
+                      <Mail className="w-8 h-8 text-primary" />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold text-slate-900 dark:text-white">{selectedSummary.item.licenseType}</h3>
+                      <p className="text-slate-500 font-medium">{selectedSummary.item.email}</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl space-y-1">
+                      <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Startdatum</p>
+                      <p className="text-slate-900 dark:text-white font-semibold">{selectedSummary.item.startDate}</p>
+                    </div>
+                    <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl space-y-1">
+                      <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Slutdatum</p>
+                      <p className={cn("font-bold", getExpirationStatus(selectedSummary.item.endDate) === 'expired' ? 'text-red-500' : 'text-slate-900 dark:text-white')}>
+                        {selectedSummary.item.endDate}
+                      </p>
+                    </div>
+                    <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl space-y-1">
+                      <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Bindningstid</p>
+                      <p className="text-slate-900 dark:text-white font-semibold">{selectedSummary.item.bindingPeriod} månader</p>
+                    </div>
+                    <div className="p-4 bg-primary/5 rounded-2xl space-y-1 border border-primary/10">
+                      <p className="text-[10px] text-primary uppercase font-bold tracking-widest">Pris</p>
+                      <p className="text-primary font-bold text-lg">{selectedSummary.item.price?.toLocaleString() || 0} kr</p>
+                    </div>
+                    <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl space-y-1 col-span-2">
+                      <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Kopplad till</p>
+                      <p className="text-slate-900 dark:text-white font-semibold">{selectedSummary.item.userName || 'Ej kopplad'}</p>
+                    </div>
+                    {user?.isAdmin === 1 && (
+                      <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl space-y-1 col-span-2">
+                        <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Lösenord</p>
+                        <div className="flex items-center justify-between">
+                          <p className="text-slate-900 dark:text-white font-mono font-semibold">
+                            {showPassword ? selectedSummary.item.password : '••••••••'}
+                          </p>
+                          <button 
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="text-primary text-xs font-bold hover:underline"
+                          >
+                            {showPassword ? 'Dölj' : 'Visa'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    {selectedSummary.item.notes && (
+                      <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl space-y-1 col-span-2">
+                        <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Noteringar</p>
+                        <p className="text-slate-900 dark:text-white font-medium whitespace-pre-wrap">{selectedSummary.item.notes}</p>
                       </div>
                     )}
                   </div>
@@ -2266,6 +2597,7 @@ export default function CustomerDetails() {
                   activeTab === 'users' ? 'användare' : 
                   activeTab === 'equipment' ? 'utrustning' : 
                   activeTab === 'it' ? 'utrustning' :
+                  activeTab === 'o365' ? 'O365 licens' :
                   'Select Care avtal'
                 }
               </h2>
@@ -2749,6 +3081,140 @@ export default function CustomerDetails() {
                 </form>
               )}
 
+              {activeTab === 'o365' && (
+                <form onSubmit={handleAddO365License} className="space-y-4">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Licenstyp</label>
+                    <div className="flex gap-2">
+                      <select 
+                        required 
+                        className="flex-1 px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary"
+                        value={o365Form.licenseType}
+                        onChange={e => setO365Form({...o365Form, licenseType: e.target.value})}
+                      >
+                        <option value="">Välj licenstyp</option>
+                        {o365LicenseTypes.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
+                      </select>
+                    </div>
+                    <div className="flex gap-2 mt-2">
+                      <input 
+                        placeholder="Ny licenstyp..." 
+                        className="flex-1 px-4 py-1 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+                        value={newO365Type}
+                        onChange={e => setNewO365Type(e.target.value)}
+                      />
+                      <button 
+                        type="button" 
+                        onClick={() => {
+                          if (newO365Type.trim()) {
+                            setO365LicenseTypes([...o365LicenseTypes, { id: Date.now(), name: newO365Type.trim() }]);
+                            setO365Form({ ...o365Form, licenseType: newO365Type.trim() });
+                            setNewO365Type('');
+                          }
+                        }} 
+                        className="px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-lg text-xs font-bold"
+                      >
+                        Lägg till
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500 uppercase">E-post</label>
+                    <input 
+                      type="email" 
+                      required 
+                      className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary" 
+                      value={o365Form.email} 
+                      onChange={e => setO365Form({...o365Form, email: e.target.value})} 
+                      placeholder="Ange e-post..."
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-500 uppercase">Lösenord (valfritt)</label>
+                      <input 
+                        type="text" 
+                        className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary" 
+                        value={o365Form.password} 
+                        onChange={e => setO365Form({...o365Form, password: e.target.value})} 
+                        placeholder="Ange lösenord..."
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-500 uppercase">Pris (valfritt)</label>
+                      <input 
+                        type="number" 
+                        className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary" 
+                        value={o365Form.price} 
+                        onChange={e => setO365Form({...o365Form, price: Number(e.target.value)})} 
+                        placeholder="0"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-500 uppercase">Startdatum</label>
+                      <input 
+                        type="date" 
+                        required 
+                        className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary" 
+                        value={o365Form.startDate} 
+                        onChange={e => setO365Form({...o365Form, startDate: e.target.value})} 
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-500 uppercase">Bindningstid (mån)</label>
+                      <input 
+                        type="number" 
+                        required 
+                        className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary" 
+                        value={o365Form.bindingPeriod} 
+                        onChange={e => setO365Form({...o365Form, bindingPeriod: Number(e.target.value)})} 
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Slutdatum (beräknas automatiskt)</label>
+                    <input 
+                      type="date" 
+                      readOnly 
+                      className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 outline-none cursor-not-allowed" 
+                      value={o365Form.endDate} 
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Koppla till användare</label>
+                    <div className="relative">
+                      <select 
+                        className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary" 
+                        value={o365Form.userId} 
+                        onChange={e => setO365Form({...o365Form, userId: Number(e.target.value)})}
+                      >
+                        <option value="0">Välj användare (valfritt)</option>
+                        {customer?.users?.map(u => <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>)}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Noteringar</label>
+                    <textarea 
+                      className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary min-h-[100px]" 
+                      value={o365Form.notes} 
+                      onChange={e => setO365Form({...o365Form, notes: e.target.value})} 
+                      placeholder="Ange noteringar om licensen..."
+                    />
+                  </div>
+
+                  <button type="submit" className="w-full py-3 bg-primary text-primary-foreground font-bold rounded-xl mt-4">Spara O365 licens</button>
+                </form>
+              )}
+
               {activeTab === 'contracts' && (
                 <form onSubmit={handleAddContract} className="space-y-4">
                   {user?.isAdmin === 1 && (
@@ -3210,6 +3676,21 @@ export default function CustomerDetails() {
                     onChange={e => setDrivingLogForm({...drivingLogForm, monthlyFee: parseFloat(e.target.value) || 0})}
                   />
                 </div>
+                {user?.isAdmin === 1 && (
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Säljare (Statistik)</label>
+                    <select 
+                      className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-xl outline-none focus:ring-2 focus:ring-primary transition-all text-slate-900 dark:text-white"
+                      value={drivingLogForm.sellerId || 0}
+                      onChange={e => setDrivingLogForm({...drivingLogForm, sellerId: Number(e.target.value)})}
+                    >
+                      <option value={user.id}>Mig själv ({user.firstName})</option>
+                      {sellers.map(s => (
+                        <option key={s.id} value={s.id}>{s.firstName} {s.lastName}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 <div className="pt-4 flex justify-end gap-3">
                   <button 
                     type="button"

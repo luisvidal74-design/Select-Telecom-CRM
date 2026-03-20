@@ -28,6 +28,7 @@ export interface Customer {
   users?: CustomerUser[];
   equipment?: Equipment[];
   itEquipment?: ITEquipment[];
+  o365Licenses?: O365License[];
   selectCare?: SelectCare[];
   selectCareHistory?: SelectCareHistory[];
   drivingLogs?: DrivingLog[];
@@ -163,6 +164,7 @@ export interface News {
   title: string;
   content: string;
   imageUrl?: string;
+  imageSize?: 'small' | 'medium' | 'large';
   authorId: number;
   firstName: string;
   lastName: string;
@@ -175,6 +177,7 @@ export interface Stats {
   equipmentSales: { month: string; count: number; revenue: number }[];
   selectCareSales: { month: string; count: number; revenue: number }[];
   drivingLogSales: { month: string; count: number; revenue: number }[];
+  itEquipmentSales: { month: string; count: number; revenue: number }[];
   topModel: { brand: string; model: string; count: number } | null;
   equipmentRevenue: number;
   selectCareRevenue: number;
@@ -239,6 +242,7 @@ export interface SupportTicket {
   isTagged?: number;
   taggedUserId?: number;
   assignedTo?: number;
+  assignedName?: string;
   createdAt: string;
   updatedAt: string;
   logs?: SupportTicketLog[];
@@ -254,4 +258,21 @@ export interface CalendarEvent {
   type: 'event' | 'contract_expiry' | 'select_care_expiry';
   relatedId?: number;
   createdAt: string;
+}
+
+export interface O365License {
+  id: number;
+  customerId: number;
+  licenseType: string;
+  email: string;
+  password?: string;
+  price?: number;
+  startDate: string;
+  bindingPeriod: number;
+  endDate: string;
+  userId?: number;
+  userName?: string;
+  createdAt: string;
+  updatedAt: string;
+  notes?: string;
 }

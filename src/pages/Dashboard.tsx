@@ -9,9 +9,13 @@ import {
   AlertTriangle,
   ChevronRight,
   Calendar,
-  Filter
+  Filter,
+  Monitor
 } from 'lucide-react';
 import { 
+  PieChart, 
+  Pie, 
+  Cell,
   LineChart, 
   Line, 
   XAxis, 
@@ -37,14 +41,15 @@ export default function Dashboard() {
   const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
   const [sellers, setSellers] = useState<User[]>([]);
   const [selectedSellerId, setSelectedSellerId] = useState<string>('');
+  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
 
   useEffect(() => {
-    if (user?.isAdmin === 1) {
+    if (user?.isAdmin === 1 || user?.isSupport === 1) {
       fetch('/api/users')
         .then(res => res.json())
         .then(data => {
           const filteredSellers = data.filter((s: User) => 
-            s.role?.includes('Säljare') || (s.isAdmin !== 1 && !s.role)
+            s.role?.includes('Säljare') || (s.isAdmin !== 1 && s.isSupport !== 1 && !s.role)
           );
           setSellers(filteredSellers);
         })
@@ -55,13 +60,13 @@ export default function Dashboard() {
   useEffect(() => {
     if (user) {
       const sellerIdToFetch = selectedSellerId || user.id;
-      const isAdminFlag = user.isAdmin === 1;
+      const isAdminFlag = user.isAdmin === 1 || user.isSupport === 1;
       
       // If admin and no specific seller selected, we fetch global stats (no sellerId in query if we want global)
       // But based on my server.ts change, if sellerId is provided, it filters.
       // So if selectedSellerId is empty, we should probably NOT send sellerId if we want global stats.
       
-      let url = `/api/stats?isAdmin=${isAdminFlag}`;
+      let url = `/api/stats?isAdmin=${isAdminFlag}&year=${selectedYear}`;
       if (selectedSellerId) {
         url += `&sellerId=${selectedSellerId}`;
       } else if (!isAdminFlag) {
@@ -75,7 +80,7 @@ export default function Dashboard() {
           setLoading(false);
         });
     }
-  }, [user, selectedSellerId]);
+  }, [user, selectedSellerId, selectedYear]);
 
   if (loading) return <div className="flex items-center justify-center h-64">Laddar statistik...</div>;
 
@@ -84,11 +89,13 @@ export default function Dashboard() {
   const chartData = stats?.equipmentSales.map((sale, index) => {
     const scSale = stats.selectCareSales.find(sc => sc.month === sale.month);
     const dlSale = stats.drivingLogSales.find(dl => dl.month === sale.month);
+    const itSale = stats.itEquipmentSales.find(it => it.month === sale.month);
     return {
       name: monthNames[index],
       mobiler: sale.count,
       selectCare: scSale ? scSale.count : 0,
-      korjournaler: dlSale ? dlSale.count : 0
+      korjournaler: dlSale ? dlSale.count : 0,
+      it: itSale ? itSale.count : 0
     };
   }) || [];
 
@@ -96,7 +103,8 @@ export default function Dashboard() {
   const currentMonthStats = {
     mobiler: stats?.equipmentSales[currentMonthIndex]?.count || 0,
     selectCare: stats?.selectCareSales[currentMonthIndex]?.count || 0,
-    korjournaler: stats?.drivingLogSales[currentMonthIndex]?.count || 0
+    korjournaler: stats?.drivingLogSales[currentMonthIndex]?.count || 0,
+    it: stats?.itEquipmentSales[currentMonthIndex]?.count || 0
   };
 
   const cards = [
@@ -105,14 +113,14 @@ export default function Dashboard() {
       value: stats?.customerCount || 0, 
       icon: Users, 
       color: 'bg-blue-500',
-      description: user?.isAdmin === 1 ? 'Totala kunder i systemet' : 'Kunder jag ansvarar för'
+      description: (user?.isAdmin === 1 || user?.isSupport === 1) ? 'Totala kunder i systemet' : 'Kunder jag ansvarar för'
     },
     { 
       title: 'Aktiva larm', 
       value: stats?.expiringSelectCare.length || 0, 
       icon: AlertTriangle, 
       color: stats?.expiringSelectCare.length ? 'bg-red-500' : 'bg-slate-400',
-      description: user?.isAdmin === 1 ? 'Avtal som löper ut snart' : 'Mina avtal som löper ut snart'
+      description: (user?.isAdmin === 1 || user?.isSupport === 1) ? 'Avtal som löper ut snart' : 'Mina avtal som löper ut snart'
     },
     { 
       title: 'Körjournaler', 
@@ -154,23 +162,39 @@ export default function Dashboard() {
           </p>
         </div>
 
-        {user?.isAdmin === 1 && (
+        <div className="flex items-center gap-3">
           <div className="flex items-center gap-3 bg-white dark:bg-slate-900 p-2 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
-            <Filter className="w-4 h-4 text-slate-400" />
+            <Calendar className="w-4 h-4 text-slate-400" />
             <select
-              value={selectedSellerId}
-              onChange={(e) => setSelectedSellerId(e.target.value)}
-              className="bg-transparent border-none text-sm font-medium text-slate-700 dark:text-slate-200 focus:ring-0 cursor-pointer min-w-[200px]"
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(Number(e.target.value))}
+              className="bg-transparent border-none text-sm font-medium text-slate-700 dark:text-slate-200 focus:ring-0 cursor-pointer"
             >
-              <option value="">Alla säljare (Globalt)</option>
-              {sellers.map(s => (
-                <option key={s.id} value={s.id}>
-                  {s.firstName} {s.lastName} ({s.role})
-                </option>
-              ))}
+              {[0, 1, 2, 3, 4].map(i => {
+                const year = new Date().getFullYear() - i;
+                return <option key={year} value={year}>{year}</option>;
+              })}
             </select>
           </div>
-        )}
+
+          {(user?.isAdmin === 1 || user?.isSupport === 1) && (
+            <div className="flex items-center gap-3 bg-white dark:bg-slate-900 p-2 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+              <Filter className="w-4 h-4 text-slate-400" />
+              <select
+                value={selectedSellerId}
+                onChange={(e) => setSelectedSellerId(e.target.value)}
+                className="bg-transparent border-none text-sm font-medium text-slate-700 dark:text-slate-200 focus:ring-0 cursor-pointer min-w-[200px]"
+              >
+                <option value="">Alla säljare (Globalt)</option>
+                {sellers.map(s => (
+                  <option key={s.id} value={s.id}>
+                    {s.firstName} {s.lastName} ({s.role})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
@@ -333,6 +357,15 @@ export default function Dashboard() {
                   activeDot={{ r: 6, strokeWidth: 0 }}
                   name="Körjournaler" 
                 />
+                <Line 
+                  type="monotone" 
+                  dataKey="it" 
+                  stroke="#0ea5e9" 
+                  strokeWidth={4} 
+                  dot={{ r: 4, strokeWidth: 2, fill: 'white' }} 
+                  activeDot={{ r: 6, strokeWidth: 0 }}
+                  name="IT" 
+                />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -342,53 +375,87 @@ export default function Dashboard() {
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.2 }}
-          className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800"
+          className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 flex flex-col"
         >
-          <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-6">Månadsstatistik</h3>
-          <div className="space-y-6">
-            <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center">
-                  <Smartphone className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-slate-900 dark:text-white">Sålda mobiler denna månad</p>
-                  <p className="text-xs text-slate-500">Baserat på senaste data</p>
-                </div>
+          <div className="flex items-center justify-between mb-8">
+            <div className="flex items-center gap-2">
+              <div className="p-2 bg-slate-100 dark:bg-slate-800 rounded-lg">
+                <TrendingUp className="w-4 h-4 text-slate-600 dark:text-slate-400" />
               </div>
-              <span className="text-xl font-bold text-slate-900 dark:text-white">
-                {currentMonthStats.mobiler}
-              </span>
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white">Månadsstatistik</h3>
             </div>
- 
-            <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-indigo-100 dark:bg-indigo-900/30 rounded-lg flex items-center justify-center">
-                  <ShieldCheck className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-slate-900 dark:text-white">Select Care avtal denna månad</p>
-                  <p className="text-xs text-slate-500">Nya tecknade avtal</p>
+            <div className="flex items-center gap-1 text-xs font-medium text-slate-500 bg-slate-50 dark:bg-slate-800 px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">
+              Månadsvis <ChevronRight className="w-3 h-3 rotate-90" />
+            </div>
+          </div>
+
+          <div className="flex flex-col lg:flex-row items-center gap-8 flex-1">
+            <div className="flex flex-col gap-3 w-full lg:w-1/2">
+              <div className="flex items-center justify-between px-1 mb-1">
+                <div className="flex flex-col">
+                  <p className="text-2xl font-black text-slate-900 dark:text-white leading-none">
+                    {currentMonthStats.mobiler + currentMonthStats.selectCare + currentMonthStats.it + currentMonthStats.korjournaler}
+                  </p>
+                  <p className="text-[10px] uppercase tracking-[0.2em] font-bold text-slate-400 mt-1">Totalt</p>
                 </div>
               </div>
-              <span className="text-xl font-bold text-slate-900 dark:text-white">
-                {currentMonthStats.selectCare}
-              </span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {[
+                  { name: 'Mobiler', value: currentMonthStats.mobiler, color: '#8b5cf6', icon: Smartphone, bg: 'bg-violet-50 dark:bg-violet-900/20', text: 'text-violet-600 dark:text-violet-400' },
+                  { name: 'Select Care', value: currentMonthStats.selectCare, color: '#10b981', icon: ShieldCheck, bg: 'bg-emerald-50 dark:bg-emerald-900/20', text: 'text-emerald-600 dark:text-emerald-400' },
+                  { name: 'IT', value: currentMonthStats.it, color: '#0ea5e9', icon: Monitor, bg: 'bg-sky-50 dark:bg-sky-900/20', text: 'text-sky-600 dark:text-sky-400' },
+                  { name: 'Körjournaler', value: currentMonthStats.korjournaler, color: '#f59e0b', icon: Calendar, bg: 'bg-amber-50 dark:bg-amber-900/20', text: 'text-amber-600 dark:text-amber-400' },
+                ].map((item) => {
+                  return (
+                    <div key={item.name} className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800">
+                      <div className={cn("p-2 rounded-lg", item.bg, item.text)}>
+                        <item.icon className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-slate-900 dark:text-white">{item.name} – {item.value} st</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
 
-            <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-amber-100 dark:bg-amber-900/30 rounded-lg flex items-center justify-center">
-                  <Calendar className="w-5 h-5 text-amber-600 dark:text-amber-400" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-slate-900 dark:text-white">Körjournaler denna månad</p>
-                  <p className="text-xs text-slate-500">Nya registrerade körjournaler</p>
-                </div>
-              </div>
-              <span className="text-xl font-bold text-slate-900 dark:text-white">
-                {currentMonthStats.korjournaler}
-              </span>
+            <div className="flex-1 w-full h-[250px] relative">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={[
+                      { name: 'Mobiler', value: currentMonthStats.mobiler || 0, fill: '#8b5cf6' },
+                      { name: 'Select Care', value: currentMonthStats.selectCare || 0, fill: '#10b981' },
+                      { name: 'IT', value: currentMonthStats.it || 0, fill: '#0ea5e9' },
+                      { name: 'Körjournaler', value: currentMonthStats.korjournaler || 0, fill: '#f59e0b' },
+                    ]}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={60}
+                    outerRadius={90}
+                    paddingAngle={8}
+                    dataKey="value"
+                    stroke="none"
+                    cornerRadius={6}
+                  />
+                  <Tooltip 
+                    content={({ active, payload }) => {
+                      if (active && payload && payload.length) {
+                        return (
+                          <div className="bg-white dark:bg-slate-800 p-2 px-4 rounded-xl shadow-xl border border-slate-100 dark:border-slate-700 flex items-center gap-2">
+                            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: payload[0].payload.fill }} />
+                            <span className="text-xs font-bold text-slate-900 dark:text-white">
+                              {payload[0].name}: {payload[0].value}
+                            </span>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
             </div>
           </div>
         </motion.div>

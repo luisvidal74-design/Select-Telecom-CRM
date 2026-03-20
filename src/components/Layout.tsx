@@ -104,7 +104,7 @@ export default function Layout() {
       { name: 'Kalender', href: '/kalender', icon: CalendarIcon }
     ] : []),
     { 
-      name: 'Supportärende', 
+      name: 'Supportärenden', 
       href: '/support', 
       icon: ShieldCheck,
       badge: newTicketsCount > 0 ? newTicketsCount : undefined
@@ -170,8 +170,8 @@ export default function Layout() {
                   >
                     <item.icon className="w-5 h-5" />
                     <span className="flex-1">{item.name}</span>
-                    {'badge' in item && item.badge && (
-                      <span className="px-2 py-0.5 bg-red-500 text-white text-[10px] font-bold rounded-full animate-pulse">
+                    {item.badge && (
+                      <span className="px-2 py-0.5 bg-emerald-500 text-white text-[10px] font-bold rounded-full animate-pulse">
                         {item.badge}
                       </span>
                     )}

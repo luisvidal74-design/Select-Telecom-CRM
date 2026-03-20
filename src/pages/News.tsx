@@ -16,11 +16,15 @@ export default function NewsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedNews, setSelectedNews] = useState<News | null>(null);
   const [editingNews, setEditingNews] = useState<News | null>(null);
+  const [newsToDelete, setNewsToDelete] = useState<News | null>(null);
   const [formData, setFormData] = useState({
     title: '',
     content: '',
-    imageUrl: ''
+    imageUrl: '',
+    imageSize: 'large' as 'small' | 'medium' | 'large'
   });
+
+  const isPrivileged = user && (user.isAdmin === 1 || user.role === 'Administratör' || user.role === 'Support');
 
   const fetchNews = async () => {
     try {
@@ -83,10 +87,15 @@ export default function NewsPage() {
       });
 
       if (res.ok) {
+        const updatedItem = await res.json();
         await fetchNews();
+        if (selectedNews?.id === updatedItem.id) {
+          // Merge with existing fields that might not be in the PUT response (like author name)
+          setSelectedNews(prev => prev ? { ...prev, ...updatedItem } : null);
+        }
         setIsModalOpen(false);
         setEditingNews(null);
-        setFormData({ title: '', content: '', imageUrl: '' });
+        setFormData({ title: '', content: '', imageUrl: '', imageSize: 'large' });
       }
     } catch (error) {
       console.error('Failed to save news:', error);
@@ -96,13 +105,18 @@ export default function NewsPage() {
     }
   };
 
-  const handleDelete = async (id: string | number) => {
-    if (!confirm('Är du säker på att du vill radera denna nyhet?')) return;
+  const handleDelete = async (item: News) => {
+    setNewsToDelete(item);
+  };
+
+  const confirmDelete = async () => {
+    if (!newsToDelete) return;
     try {
-      const res = await fetch(`/api/news/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/news/${newsToDelete.id}`, { method: 'DELETE' });
       if (res.ok) {
         await fetchNews();
-        if (selectedNews?.id === id) setSelectedNews(null);
+        if (selectedNews?.id === newsToDelete.id) setSelectedNews(null);
+        setNewsToDelete(null);
       }
     } catch (error) {
       console.error('Failed to delete news:', error);
@@ -111,7 +125,12 @@ export default function NewsPage() {
 
   const handleEdit = (item: News) => {
     setEditingNews(item);
-    setFormData({ title: item.title, content: item.content, imageUrl: item.imageUrl || '' });
+    setFormData({ 
+      title: item.title, 
+      content: item.content, 
+      imageUrl: item.imageUrl || '',
+      imageSize: item.imageSize || 'large'
+    });
     setIsModalOpen(true);
   };
 
@@ -149,11 +168,11 @@ export default function NewsPage() {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          {user?.isAdmin && (
+          {isPrivileged && (
             <button 
               onClick={() => {
                 setEditingNews(null);
-                setFormData({ title: '', content: '', imageUrl: '' });
+                setFormData({ title: '', content: '', imageUrl: '', imageSize: 'large' });
                 setIsModalOpen(true);
               }}
               className="w-full sm:w-auto flex items-center justify-center gap-3 px-8 py-3.5 bg-primary text-primary-foreground rounded-2xl font-bold shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all whitespace-nowrap"
@@ -168,6 +187,8 @@ export default function NewsPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
         {filteredNews.map((item, i) => {
           const isFeatured = i === 0 && !search;
+          const imageSizeClass = item.imageSize === 'small' ? "h-48" : item.imageSize === 'medium' ? "h-64" : "";
+          
           return (
             <motion.div
               key={item.id}
@@ -182,13 +203,18 @@ export default function NewsPage() {
             >
               <div className={cn(
                 "relative overflow-hidden shrink-0",
-                isFeatured ? "w-full md:w-1/2 h-64 md:h-auto" : "w-full aspect-[16/10]"
+                isFeatured ? "w-full md:w-1/2 h-64 md:h-auto" : "w-full aspect-[16/10]",
+                !isFeatured && item.imageSize === 'small' && "aspect-square max-h-48 mx-auto mt-4 rounded-2xl overflow-hidden",
+                !isFeatured && item.imageSize === 'medium' && "aspect-video max-h-64 mx-auto mt-4 rounded-2xl overflow-hidden"
               )}>
                 {item.imageUrl ? (
                   <img 
                     src={item.imageUrl} 
                     alt={item.title} 
-                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-out"
+                    className={cn(
+                      "w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-out",
+                      !isFeatured && (item.imageSize === 'small' || item.imageSize === 'medium') && "object-contain bg-slate-50 dark:bg-slate-800"
+                    )}
                     referrerPolicy="no-referrer"
                   />
                 ) : (
@@ -241,7 +267,7 @@ export default function NewsPage() {
                     Läs mer <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                   </div>
 
-                  {user?.isAdmin && (
+                  {isPrivileged && (
                     <div className="flex items-center gap-1">
                       <button
                         onClick={(e) => {
@@ -255,7 +281,7 @@ export default function NewsPage() {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleDelete(item.id);
+                          handleDelete(item);
                         }}
                         className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all"
                       >
@@ -296,20 +322,30 @@ export default function NewsPage() {
 
               <div className="flex-1 overflow-y-auto no-scrollbar">
                 {selectedNews.imageUrl && (
-                  <div className="relative h-[400px] w-full">
+                  <div className={cn(
+                    "relative w-full mx-auto",
+                    selectedNews.imageSize === 'small' ? "max-w-md mt-8 rounded-3xl overflow-hidden shadow-lg" : 
+                    selectedNews.imageSize === 'medium' ? "max-w-2xl mt-8 rounded-3xl overflow-hidden shadow-lg" : 
+                    "h-[400px]"
+                  )}>
                     <img 
                       src={selectedNews.imageUrl} 
                       alt={selectedNews.title} 
-                      className="w-full h-full object-cover"
+                      className={cn(
+                        "w-full h-full",
+                        selectedNews.imageSize === 'large' ? "object-cover" : "object-contain bg-slate-50 dark:bg-slate-800"
+                      )}
                       referrerPolicy="no-referrer"
                     />
-                    <div className="absolute inset-0 bg-gradient-to-t from-white dark:from-slate-900 via-transparent to-black/20" />
+                    {selectedNews.imageSize === 'large' && (
+                      <div className="absolute inset-0 bg-gradient-to-t from-white dark:from-slate-900 via-transparent to-black/20" />
+                    )}
                   </div>
                 )}
 
                 <div className={cn(
                   "px-8 lg:px-16 pb-16",
-                  !selectedNews.imageUrl && "pt-16"
+                  (!selectedNews.imageUrl || selectedNews.imageSize !== 'large') && "pt-16"
                 )}>
                   <div className="max-w-3xl mx-auto space-y-8">
                     <div className="space-y-4">
@@ -325,6 +361,25 @@ export default function NewsPage() {
                         {selectedNews.title}
                       </h1>
                     </div>
+
+                    {isPrivileged && (
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => handleEdit(selectedNews)}
+                          className="flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-primary/10 hover:text-primary rounded-xl transition-all font-bold text-sm"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                          Redigera
+                        </button>
+                        <button
+                          onClick={() => handleDelete(selectedNews)}
+                          className="flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20 rounded-xl transition-all font-bold text-sm"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                          Radera
+                        </button>
+                      </div>
+                    )}
 
                     <div className="flex items-center gap-4 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800">
                       <div className="w-12 h-12 rounded-full bg-primary text-white flex items-center justify-center text-lg font-bold shadow-lg shadow-primary/20">
@@ -391,6 +446,38 @@ export default function NewsPage() {
                   <div className="space-y-2">
                     <label className="text-sm font-bold text-slate-700 dark:text-slate-300 ml-1">Bild (Klistra in eller ladda upp)</label>
                     <div className="flex flex-col gap-4">
+                      <div className="flex items-center gap-4 mb-2">
+                        <button
+                          type="button"
+                          onClick={() => setFormData({ ...formData, imageSize: 'small' })}
+                          className={cn(
+                            "px-4 py-2 rounded-xl text-xs font-bold transition-all",
+                            formData.imageSize === 'small' ? "bg-primary text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-500"
+                          )}
+                        >
+                          Liten
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setFormData({ ...formData, imageSize: 'medium' })}
+                          className={cn(
+                            "px-4 py-2 rounded-xl text-xs font-bold transition-all",
+                            formData.imageSize === 'medium' ? "bg-primary text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-500"
+                          )}
+                        >
+                          Mellan
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setFormData({ ...formData, imageSize: 'large' })}
+                          className={cn(
+                            "px-4 py-2 rounded-xl text-xs font-bold transition-all",
+                            formData.imageSize === 'large' ? "bg-primary text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-500"
+                          )}
+                        >
+                          Stor (Fullbredd)
+                        </button>
+                      </div>
                       {formData.imageUrl ? (
                         <div className="relative w-full aspect-video rounded-2xl overflow-hidden border-2 border-primary group">
                           <img src={formData.imageUrl} alt="Preview" className="w-full h-full object-cover" />
@@ -467,6 +554,44 @@ export default function NewsPage() {
                   </button>
                 </div>
               </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Delete Confirmation Modal */}
+      <AnimatePresence>
+        {newsToDelete && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="bg-white dark:bg-slate-900 w-full max-w-md rounded-[32px] shadow-2xl overflow-hidden border border-slate-200 dark:border-slate-800 p-8"
+            >
+              <div className="text-center space-y-4">
+                <div className="w-16 h-16 bg-red-50 dark:bg-red-900/20 text-red-500 rounded-full flex items-center justify-center mx-auto">
+                  <Trash2 className="w-8 h-8" />
+                </div>
+                <h3 className="text-2xl font-bold text-slate-900 dark:text-white">Radera nyhet?</h3>
+                <p className="text-slate-500 dark:text-slate-400">
+                  Är du säker på att du vill radera nyheten <span className="font-bold text-slate-900 dark:text-white">"{newsToDelete.title}"</span>? Detta går inte att ångra.
+                </p>
+                <div className="flex flex-col sm:flex-row gap-3 pt-4">
+                  <button
+                    onClick={() => setNewsToDelete(null)}
+                    className="flex-1 px-6 py-3 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold rounded-2xl hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                  >
+                    Avbryt
+                  </button>
+                  <button
+                    onClick={confirmDelete}
+                    className="flex-1 px-6 py-3 bg-red-500 text-white font-bold rounded-2xl hover:bg-red-600 shadow-lg shadow-red-500/20 transition-colors"
+                  >
+                    Ja, radera
+                  </button>
+                </div>
+              </div>
             </motion.div>
           </div>
         )}

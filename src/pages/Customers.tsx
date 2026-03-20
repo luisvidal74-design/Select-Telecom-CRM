@@ -127,20 +127,24 @@ export default function Customers() {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <button 
-            onClick={() => setIsImportOpen(true)}
-            className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 rounded-xl font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors whitespace-nowrap"
-          >
-            <FileSpreadsheet className="w-5 h-5 text-green-500" />
-            Importera Excel
-          </button>
-          <button 
-            onClick={() => setIsModalOpen(true)}
-            className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground rounded-xl font-semibold shadow-lg shadow-primary/20 hover:opacity-90 transition-opacity whitespace-nowrap"
-          >
-            <Plus className="w-5 h-5" />
-            Lägg till kund
-          </button>
+          {(user?.isAdmin === 1 || user?.isSupport === 1) && (
+            <>
+              <button 
+                onClick={() => setIsImportOpen(true)}
+                className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 rounded-xl font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors whitespace-nowrap"
+              >
+                <FileSpreadsheet className="w-5 h-5 text-green-500" />
+                Importera Excel
+              </button>
+              <button 
+                onClick={() => setIsModalOpen(true)}
+                className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground rounded-xl font-semibold shadow-lg shadow-primary/20 hover:opacity-90 transition-opacity whitespace-nowrap"
+              >
+                <Plus className="w-5 h-5" />
+                Lägg till kund
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -199,16 +203,18 @@ export default function Customers() {
               </div>
 
               <div className="flex items-center gap-2">
-                <button
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setDeleteConfirm(customer.id);
-                  }}
-                  className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+                {(user?.isAdmin === 1 || user?.isSupport === 1) && (
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setDeleteConfirm(customer.id);
+                    }}
+                    className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
                 <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-primary transition-colors flex-shrink-0" />
               </div>
             </Link>

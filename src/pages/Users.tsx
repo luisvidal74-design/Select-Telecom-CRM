@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Check, X, Shield, User as UserIcon, Mail, Phone, Edit2, Trash2, MoreVertical, ShieldAlert, UserCheck } from 'lucide-react';
+import { Check, X, Shield, User as UserIcon, Mail, Phone, Edit2, Trash2, MoreVertical, ShieldAlert, UserCheck, ShieldCheck } from 'lucide-react';
 import { User } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
@@ -12,6 +12,7 @@ export default function Users() {
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<User | null>(null);
   const [editForm, setEditForm] = useState<Partial<User>>({});
 
   const fetchUsers = async () => {
@@ -34,15 +35,20 @@ export default function Users() {
     if (res.ok) fetchUsers();
   };
 
-  const handleDeleteUser = async (id: number) => {
-    if (!window.confirm('Är du säker på att du vill radera denna användare?')) return;
+  const handleDeleteUser = async (user: User) => {
+    setUserToDelete(user);
+  };
+
+  const confirmDeleteUser = async () => {
+    if (!userToDelete) return;
     
-    const res = await fetch(`/api/users/${id}`, {
+    const res = await fetch(`/api/users/${userToDelete.id}`, {
       method: 'DELETE',
     });
     if (res.ok) {
       fetchUsers();
       setIsDetailsModalOpen(false);
+      setUserToDelete(null);
     }
   };
 
@@ -71,7 +77,8 @@ export default function Users() {
       email: user.email,
       phone: user.phone,
       role: user.role,
-      isAdmin: user.isAdmin
+      isAdmin: user.isAdmin,
+      isSupport: user.isSupport
     });
     setIsEditModalOpen(true);
   };
@@ -177,9 +184,11 @@ export default function Users() {
                   <div className="flex items-center gap-2 mt-1">
                     <span className={cn(
                       "px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest",
-                      selectedUser.isAdmin ? "bg-primary/10 text-primary" : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
+                      selectedUser.isAdmin ? "bg-primary/10 text-primary" : 
+                      selectedUser.isSupport ? "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400" :
+                      "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
                     )}>
-                      {selectedUser.role || (selectedUser.isAdmin ? 'Admin' : 'Säljare')}
+                      {selectedUser.role || (selectedUser.isAdmin ? 'Admin' : selectedUser.isSupport ? 'Support' : 'Säljare')}
                     </span>
                     <span className="flex items-center gap-1.5 text-xs font-bold text-green-600">
                       <div className="w-1.5 h-1.5 rounded-full bg-green-600" /> Aktiv
@@ -218,7 +227,7 @@ export default function Users() {
                   </button>
                   {currentUser?.id !== selectedUser.id && (
                     <button 
-                      onClick={() => handleDeleteUser(selectedUser.id)}
+                      onClick={() => handleDeleteUser(selectedUser)}
                       className="px-6 py-3 bg-red-50 dark:bg-red-900/20 text-red-600 rounded-2xl font-bold hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -316,6 +325,31 @@ export default function Users() {
                   </button>
                 </div>
 
+                <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center">
+                      <ShieldCheck className="w-5 h-5 text-indigo-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-slate-900 dark:text-white">Support</p>
+                      <p className="text-[10px] text-slate-500">Kan hantera kunder och se översikt</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setEditForm({...editForm, isSupport: editForm.isSupport ? 0 : 1})}
+                    className={cn(
+                      "w-12 h-6 rounded-full transition-colors relative",
+                      editForm.isSupport ? "bg-indigo-600" : "bg-slate-300 dark:bg-slate-700"
+                    )}
+                  >
+                    <div className={cn(
+                      "absolute top-1 w-4 h-4 bg-white rounded-full transition-transform",
+                      editForm.isSupport ? "left-7" : "left-1"
+                    )} />
+                  </button>
+                </div>
+
                 <div className="pt-6 flex items-center justify-end gap-3 border-t border-slate-100 dark:border-slate-800 -mx-6 px-6 mt-6">
                   <button 
                     type="button"
@@ -369,9 +403,11 @@ export default function Users() {
                   <td className="px-6 py-4">
                     <span className={cn(
                       "px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest",
-                      user.isAdmin ? "bg-primary/10 text-primary" : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
+                      user.isAdmin ? "bg-primary/10 text-primary" : 
+                      user.isSupport ? "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400" :
+                      "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
                     )}>
-                      {user.role || (user.isAdmin ? 'Admin' : 'Säljare')}
+                      {user.role || (user.isAdmin ? 'Admin' : user.isSupport ? 'Support' : 'Säljare')}
                     </span>
                   </td>
                   <td className="px-6 py-4">
@@ -395,7 +431,10 @@ export default function Users() {
                       </button>
                       {currentUser?.id !== user.id && (
                         <button 
-                          onClick={() => handleDeleteUser(user.id)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteUser(user);
+                          }}
                           className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10 rounded-lg transition-colors"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -410,6 +449,44 @@ export default function Users() {
         </div>
       </div>
     </section>
+
+    {/* Delete User Confirmation Modal */}
+    <AnimatePresence>
+      {userToDelete && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.9, y: 20 }}
+            className="bg-white dark:bg-slate-900 w-full max-w-md rounded-[32px] shadow-2xl overflow-hidden border border-slate-200 dark:border-slate-800 p-8"
+          >
+            <div className="text-center space-y-4">
+              <div className="w-16 h-16 bg-red-50 dark:bg-red-900/20 text-red-500 rounded-full flex items-center justify-center mx-auto">
+                <Trash2 className="w-8 h-8" />
+              </div>
+              <h3 className="text-2xl font-bold text-slate-900 dark:text-white">Radera användare?</h3>
+              <p className="text-slate-500 dark:text-slate-400">
+                Är du säker på att du vill radera användaren <span className="font-bold text-slate-900 dark:text-white">"{userToDelete.firstName} {userToDelete.lastName}"</span>? Detta går inte att ångra.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3 pt-4">
+                <button
+                  onClick={() => setUserToDelete(null)}
+                  className="flex-1 px-6 py-3 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold rounded-2xl hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                >
+                  Avbryt
+                </button>
+                <button
+                  onClick={confirmDeleteUser}
+                  className="flex-1 px-6 py-3 bg-red-500 text-white font-bold rounded-2xl hover:bg-red-600 shadow-lg shadow-red-500/20 transition-colors"
+                >
+                  Ja, radera
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
     </div>
   );
 }

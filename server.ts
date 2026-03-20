@@ -77,6 +77,11 @@ try {
   db.prepare("ALTER TABLE select_care ADD COLUMN trackingNumber TEXT").run();
 } catch (e) {}
 
+// Migration: Add imageSize to news if it doesn't exist
+try {
+  db.prepare("ALTER TABLE news ADD COLUMN imageSize TEXT DEFAULT 'large'").run();
+} catch (e) {}
+
 db.exec(`
   CREATE TABLE IF NOT EXISTS customer_users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -302,6 +307,28 @@ db.exec(`
     FOREIGN KEY(sellerId) REFERENCES users(id)
   );
 
+  CREATE TABLE IF NOT EXISTS o365_license_types (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT UNIQUE
+  );
+
+  CREATE TABLE IF NOT EXISTS o365_licenses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    customerId INTEGER,
+    licenseType TEXT,
+    email TEXT,
+    password TEXT,
+    price REAL,
+    startDate TEXT,
+    bindingPeriod INTEGER,
+    endDate TEXT,
+    userId INTEGER,
+    createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(customerId) REFERENCES customers(id),
+    FOREIGN KEY(userId) REFERENCES customer_users(id)
+  );
+
   CREATE TABLE IF NOT EXISTS select_care_history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     originalId INTEGER,
@@ -362,6 +389,7 @@ try { db.prepare("ALTER TABLE support_tickets ADD COLUMN isReadByAdmin INTEGER D
 try { db.prepare("ALTER TABLE support_tickets ADD COLUMN isReadByCreator INTEGER DEFAULT 0").run(); } catch (e) {}
 try { db.prepare("ALTER TABLE support_tickets ADD COLUMN isTagged INTEGER DEFAULT 0").run(); } catch (e) {}
 try { db.prepare("ALTER TABLE support_tickets ADD COLUMN taggedUserId INTEGER").run(); } catch (e) {}
+try { db.prepare("ALTER TABLE o365_licenses ADD COLUMN notes TEXT").run(); } catch (e) {}
 
 // Seed admin user if not exists
 const adminEmail = 'luis@selecttelecom.se';
@@ -516,7 +544,7 @@ async function startServer() {
 
   app.put("/api/users/:id", (req, res) => {
     const { id } = req.params;
-    const { firstName, lastName, password, profilePic, role, isAdmin, phone } = req.body;
+    const { firstName, lastName, password, profilePic, role, isAdmin, isSupport, phone } = req.body;
     
     // Security: Only admins can change roles or admin status
     // We need to check the requester's status, but for now we'll just be careful with what we update
@@ -526,7 +554,7 @@ async function startServer() {
     if (!currentUser) return res.status(404).json({ error: "Användaren hittades inte" });
 
     if (password) {
-      db.prepare('UPDATE users SET firstName = ?, lastName = ?, password = ?, profilePic = ?, role = ?, isAdmin = ?, phone = ? WHERE id = ?')
+      db.prepare('UPDATE users SET firstName = ?, lastName = ?, password = ?, profilePic = ?, role = ?, isAdmin = ?, isSupport = ?, phone = ? WHERE id = ?')
         .run(
           firstName || currentUser.firstName, 
           lastName || currentUser.lastName, 
@@ -534,17 +562,19 @@ async function startServer() {
           profilePic || currentUser.profilePic, 
           role || currentUser.role, 
           isAdmin !== undefined ? isAdmin : currentUser.isAdmin,
+          isSupport !== undefined ? isSupport : currentUser.isSupport,
           phone || currentUser.phone,
           id
         );
     } else {
-      db.prepare('UPDATE users SET firstName = ?, lastName = ?, profilePic = ?, role = ?, isAdmin = ?, phone = ? WHERE id = ?')
+      db.prepare('UPDATE users SET firstName = ?, lastName = ?, profilePic = ?, role = ?, isAdmin = ?, isSupport = ?, phone = ? WHERE id = ?')
         .run(
           firstName || currentUser.firstName, 
           lastName || currentUser.lastName, 
           profilePic || currentUser.profilePic, 
           role || currentUser.role, 
           isAdmin !== undefined ? isAdmin : currentUser.isAdmin,
+          isSupport !== undefined ? isSupport : currentUser.isSupport,
           phone || currentUser.phone,
           id
         );
@@ -582,7 +612,7 @@ async function startServer() {
   // Customers
   app.get("/api/customers", (req, res) => {
     const { userId, isAdmin, role } = req.query;
-    const isPrivileged = isAdmin === 'true' || isAdmin === '1' || role === 'Administratör' || role === 'Support';
+    const isPrivileged = isAdmin === 'true' || isAdmin === '1' || role?.toString().toLowerCase() === 'administratör' || role?.toString().toLowerCase() === 'support';
     
     let customers;
     if (isPrivileged) {
@@ -683,7 +713,7 @@ async function startServer() {
   app.get("/api/customers/:id", (req, res) => {
     const { id } = req.params;
     const { userId, isAdmin, role } = req.query;
-    const isPrivileged = isAdmin === 'true' || isAdmin === '1' || role === 'Administratör' || role === 'Support';
+    const isPrivileged = isAdmin === 'true' || isAdmin === '1' || role?.toString().toLowerCase() === 'administratör' || role?.toString().toLowerCase() === 'support';
 
     const customer = db.prepare('SELECT * FROM customers WHERE id = ?').get(id) as any;
     if (!customer) return res.status(404).json({ error: "Customer not found" });
@@ -717,6 +747,14 @@ async function startServer() {
       ORDER BY it.createdAt DESC
     `).all(id);
 
+    let o365Licenses = db.prepare(`
+      SELECT o.*, u.firstName || ' ' || u.lastName as userName
+      FROM o365_licenses o
+      LEFT JOIN customer_users u ON o.userId = u.id
+      WHERE o.customerId = ?
+      ORDER BY o.createdAt DESC
+    `).all(id);
+
     if (role === 'Kund') {
       // Filter equipment
       equipment = equipment.map((e: any) => {
@@ -728,6 +766,11 @@ async function startServer() {
         const { purchasePrice, comment, ...rest } = e;
         return rest;
       });
+      // Filter O365
+      o365Licenses = o365Licenses.map((l: any) => {
+        const { password, ...rest } = l;
+        return rest;
+      });
       // Filter Select Care
       selectCare = selectCare.map((sc: any) => {
         const { purchasePrice, ...rest } = sc;
@@ -735,6 +778,12 @@ async function startServer() {
       });
       // Hide contracts
       contracts = [];
+    } else if (isAdmin !== 'true' && isAdmin !== '1') {
+      // Filter password for non-admins (sales, support)
+      o365Licenses = o365Licenses.map((l: any) => {
+        const { password, ...rest } = l;
+        return rest;
+      });
     }
 
     // Fetch files for each contract
@@ -754,7 +803,7 @@ async function startServer() {
 
     const selectCareHistory = role === 'Kund' ? [] : db.prepare('SELECT * FROM select_care_history WHERE customerId = ? ORDER BY deletedAt DESC').all(id);
     
-    res.json({ ...customer, users, equipment, itEquipment, selectCare: selectCareWithLogs, selectCareHistory, contracts: contractsWithFiles });
+    res.json({ ...customer, users, equipment, itEquipment, o365Licenses, selectCare: selectCareWithLogs, selectCareHistory, contracts: contractsWithFiles });
   });
 
   app.put("/api/customers/:id", (req, res) => {
@@ -987,6 +1036,61 @@ async function startServer() {
     res.json({ success: true });
   });
 
+  // O365 Licenses
+  app.get("/api/o365-licenses/types", (req, res) => {
+    const types = db.prepare('SELECT * FROM o365_license_types ORDER BY name ASC').all();
+    res.json(types);
+  });
+
+  app.post("/api/o365-licenses/types", (req, res) => {
+    const { name } = req.body;
+    try {
+      const result = db.prepare('INSERT INTO o365_license_types (name) VALUES (?)').run(name);
+      res.json({ id: result.lastInsertRowid });
+    } catch (e) {
+      res.status(400).json({ error: "License type already exists" });
+    }
+  });
+
+  app.post("/api/o365-licenses", (req, res) => {
+    const { customerId, licenseType, email, password, price, startDate, bindingPeriod, endDate, userId, notes } = req.body;
+    
+    // Save license type if it doesn't exist
+    try {
+      db.prepare('INSERT OR IGNORE INTO o365_license_types (name) VALUES (?)').run(licenseType);
+    } catch (e) {}
+
+    const result = db.prepare(`
+      INSERT INTO o365_licenses (customerId, licenseType, email, password, price, startDate, bindingPeriod, endDate, userId, notes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(customerId, licenseType, email, password || null, price || null, startDate, bindingPeriod, endDate, userId || null, notes || null);
+    
+    res.json({ id: result.lastInsertRowid });
+  });
+
+  app.put("/api/o365-licenses/:id", (req, res) => {
+    const { licenseType, email, password, price, startDate, bindingPeriod, endDate, userId, notes } = req.body;
+    const { id } = req.params;
+
+    // Save license type if it doesn't exist
+    try {
+      db.prepare('INSERT OR IGNORE INTO o365_license_types (name) VALUES (?)').run(licenseType);
+    } catch (e) {}
+
+    db.prepare(`
+      UPDATE o365_licenses 
+      SET licenseType = ?, email = ?, password = ?, price = ?, startDate = ?, bindingPeriod = ?, endDate = ?, userId = ?, notes = ?, updatedAt = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(licenseType, email, password || null, price || null, startDate, bindingPeriod, endDate, userId || null, notes || null, id);
+    
+    res.json({ success: true });
+  });
+
+  app.delete("/api/o365-licenses/:id", (req, res) => {
+    db.prepare('DELETE FROM o365_licenses WHERE id = ?').run(req.params.id);
+    res.json({ success: true });
+  });
+
   app.get("/api/equipment/suggestions", (req, res) => {
     const brands = [
       ...new Set([
@@ -1034,12 +1138,12 @@ async function startServer() {
   });
 
   app.put("/api/equipment/:id", (req, res) => {
-    const { brand, model, color, memory, imei, purchasePlace, orderNumber, purchaseDate, purchasePrice, customerPrice, userId, trackingNumber, notes } = req.body;
+    const { brand, model, color, memory, imei, purchasePlace, orderNumber, purchaseDate, purchasePrice, customerPrice, sellerId, userId, trackingNumber, notes } = req.body;
     db.prepare(`
       UPDATE equipment 
-      SET brand = ?, model = ?, color = ?, memory = ?, imei = ?, purchasePlace = ?, orderNumber = ?, purchaseDate = ?, purchasePrice = ?, customerPrice = ?, userId = ?, trackingNumber = ?, notes = ?
+      SET brand = ?, model = ?, color = ?, memory = ?, imei = ?, purchasePlace = ?, orderNumber = ?, purchaseDate = ?, purchasePrice = ?, customerPrice = ?, sellerId = ?, userId = ?, trackingNumber = ?, notes = ?
       WHERE id = ?
-    `).run(brand, model, color, memory, imei, purchasePlace, orderNumber, purchaseDate, purchasePrice, customerPrice, userId || null, trackingNumber || null, notes || null, req.params.id);
+    `).run(brand, model, color, memory, imei, purchasePlace, orderNumber, purchaseDate, purchasePrice, customerPrice, sellerId || null, userId || null, trackingNumber || null, notes || null, req.params.id);
     res.json({ success: true });
   });
 
@@ -1065,11 +1169,11 @@ async function startServer() {
   });
 
   app.post("/api/news", (req, res) => {
-    const { title, content, imageUrl, authorId } = req.body;
+    const { title, content, imageUrl, imageSize, authorId } = req.body;
     const result = db.prepare(`
-      INSERT INTO news (title, content, imageUrl, authorId)
-      VALUES (?, ?, ?, ?)
-    `).run(title, content, imageUrl, authorId);
+      INSERT INTO news (title, content, imageUrl, imageSize, authorId)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(title, content, imageUrl, imageSize || 'large', authorId);
     res.json({ id: result.lastInsertRowid });
   });
 
@@ -1116,25 +1220,32 @@ async function startServer() {
     res.json({ success: true });
   });
 
-  app.put("/api/driving-logs/:id", (req, res) => {
-    const { regNo, driverName, email, deviceType, schema, monthlyFee } = req.body;
-    db.prepare('UPDATE driving_logs SET regNo = ?, driverName = ?, email = ?, deviceType = ?, schema = ?, monthlyFee = ? WHERE id = ?')
-      .run(regNo, driverName, email, deviceType, schema, monthlyFee, req.params.id);
-    res.json({ success: true });
-  });
-
   app.delete("/api/driving-logs/:id", (req, res) => {
     db.prepare('DELETE FROM driving_logs WHERE id = ?').run(req.params.id);
     res.json({ success: true });
   });
 
+  app.put("/api/driving-logs/:id", (req, res) => {
+    const { regNo, driverName, email, deviceType, schema, monthlyFee, sellerId } = req.body;
+    try {
+      db.prepare(`
+        UPDATE driving_logs 
+        SET regNo = ?, driverName = ?, email = ?, deviceType = ?, schema = ?, monthlyFee = ?, sellerId = ?, updatedAt = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(regNo, driverName, email, deviceType || null, schema || null, monthlyFee || 0, sellerId || null, req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Kunde inte uppdatera körjournal" });
+    }
+  });
+
   app.put("/api/news/:id", (req, res) => {
-    const { title, content, imageUrl } = req.body;
+    const { title, content, imageUrl, imageSize } = req.body;
     db.prepare(`
       UPDATE news 
-      SET title = ?, content = ?, imageUrl = ?, updatedAt = CURRENT_TIMESTAMP
+      SET title = ?, content = ?, imageUrl = ?, imageSize = ?, updatedAt = CURRENT_TIMESTAMP
       WHERE id = ?
-    `).run(title, content, imageUrl, req.params.id);
+    `).run(title, content, imageUrl, imageSize || 'large', req.params.id);
     res.json({ success: true });
   });
 
@@ -1334,7 +1445,7 @@ async function startServer() {
       return res.status(401).json({ error: "Användar-ID saknas. Vänligen logga in igen." });
     }
 
-    const isPrivileged = isAdmin === 'true' || isAdmin === '1' || role === 'Administratör' || role === 'Support';
+    const isPrivileged = isAdmin === 'true' || isAdmin === '1' || role?.toString().toLowerCase() === 'administratör' || role?.toString().toLowerCase() === 'support';
     const customer = db.prepare('SELECT responsibleSeller FROM customers WHERE id = ?').get(customerId) as any;
     
     if (!customer) {
@@ -1377,7 +1488,7 @@ async function startServer() {
       return res.status(401).json({ error: "Användar-ID saknas. Vänligen logga in igen." });
     }
 
-    const isPrivileged = isAdmin === 'true' || isAdmin === '1' || role === 'Administratör' || role === 'Support';
+    const isPrivileged = isAdmin === 'true' || isAdmin === '1' || role?.toString().toLowerCase() === 'administratör' || role?.toString().toLowerCase() === 'support';
     const customer = db.prepare('SELECT responsibleSeller FROM customers WHERE id = ?').get(customerId) as any;
     
     if (!customer) {
@@ -1441,7 +1552,7 @@ async function startServer() {
       return res.status(401).json({ error: "Användar-ID saknas. Vänligen logga in igen." });
     }
 
-    const isPrivileged = isAdmin === 'true' || isAdmin === '1' || role === 'Administratör' || role === 'Support';
+    const isPrivileged = isAdmin === 'true' || isAdmin === '1' || role?.toString().toLowerCase() === 'administratör' || role?.toString().toLowerCase() === 'support';
     const contract = db.prepare('SELECT customerId FROM contracts WHERE id = ?').get(id) as any;
     if (!contract) return res.status(404).json({ error: "Avtal hittades inte." });
 
@@ -1464,9 +1575,66 @@ async function startServer() {
   });
 
   // Support Tickets
+  app.get('/api/users/support-staff', (req, res) => {
+    try {
+      const staff = db.prepare(`
+        SELECT id, firstName, lastName, role, isAdmin 
+        FROM users 
+        WHERE isAdmin = 1 OR role = 'Support'
+        ORDER BY firstName ASC
+      `).all();
+      res.json(staff);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to fetch support staff' });
+    }
+  });
+
+  app.post('/api/support-tickets/:id/assign', (req, res) => {
+    const { id } = req.params;
+    const { assignedTo, userId, note } = req.body;
+
+    try {
+      const ticket = db.prepare('SELECT * FROM support_tickets WHERE id = ?').get(id);
+      if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
+
+      const assignee = db.prepare('SELECT firstName, lastName FROM users WHERE id = ?').get(assignedTo);
+      const assigneeName = assignee ? `${assignee.firstName} ${assignee.lastName}` : 'Ingen';
+
+      db.prepare(`
+        UPDATE support_tickets 
+        SET assignedTo = ?, isReadByAdmin = 0, updatedAt = CURRENT_TIMESTAMP 
+        WHERE id = ?
+      `).run(assignedTo, id);
+
+      // Add log
+      db.prepare(`
+        INSERT INTO support_ticket_logs (ticketId, userId, action, note)
+        VALUES (?, ?, ?, ?)
+      `).run(id, userId, 'Tilldelning', note || `Ärendet tilldelades till ${assigneeName}`);
+
+      // Broadcast notification via WebSocket if assignee is online
+      const notification = JSON.stringify({
+        type: 'notification',
+        message: `Du har tilldelats supportärende ${id}`,
+        ticketId: id
+      });
+
+      wss.clients.forEach((client) => {
+        const user = activeUsers.get(client);
+        if (user && user.id === Number(assignedTo) && client.readyState === WebSocket.OPEN) {
+          client.send(notification);
+        }
+      });
+
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to assign ticket' });
+    }
+  });
+
   app.get("/api/support-tickets/new/count", (req, res) => {
     const { userId, isAdmin, role } = req.query;
-    const isPrivileged = isAdmin === 'true' || isAdmin === '1' || role === 'Administratör' || role === 'Support';
+    const isPrivileged = isAdmin === 'true' || isAdmin === '1' || role?.toString().toLowerCase() === 'administratör' || role?.toString().toLowerCase() === 'support';
     
     let count;
     if (isPrivileged) {
@@ -1484,33 +1652,49 @@ async function startServer() {
   });
 
   app.get("/api/support-tickets", (req, res) => {
-    const { userId, isAdmin, role } = req.query;
-    const isPrivileged = isAdmin === 'true' || isAdmin === '1' || role === 'Administratör' || role === 'Support';
+    const { userId, isAdmin, role, customerId } = req.query;
+    const isPrivileged = isAdmin === 'true' || isAdmin === '1' || role?.toString().toLowerCase() === 'administratör' || role?.toString().toLowerCase() === 'support';
     
     let tickets;
     if (isPrivileged) {
-      tickets = db.prepare(`
+      let query = `
         SELECT t.*, c.name as customerName, u.firstName || ' ' || u.lastName as creatorName,
-               sc.brand || ' ' || sc.model as deviceName
+               sc.brand || ' ' || sc.model as deviceName,
+               ua.firstName || ' ' || ua.lastName as assignedName
         FROM support_tickets t
         JOIN customers c ON t.customerId = c.id
         LEFT JOIN users u ON t.createdBy = u.id
+        LEFT JOIN users ua ON t.assignedTo = ua.id
         LEFT JOIN select_care sc ON t.selectCareId = sc.id
-        ORDER BY t.updatedAt DESC
-      `).all();
+      `;
+      let params = [];
+      if (customerId) {
+        query += " WHERE t.customerId = ?";
+        params.push(customerId);
+      }
+      query += " ORDER BY t.updatedAt DESC";
+      tickets = db.prepare(query).all(...params);
     } else {
       // Users can only see tickets for customers they are responsible for (sellerId) OR where they are tagged
-      tickets = db.prepare(`
+      let query = `
         SELECT t.*, c.name as customerName, u.firstName || ' ' || u.lastName as creatorName,
-               sc.brand || ' ' || sc.model as deviceName
+               sc.brand || ' ' || sc.model as deviceName,
+               ua.firstName || ' ' || ua.lastName as assignedName
         FROM support_tickets t
         JOIN customers c ON t.customerId = c.id
         LEFT JOIN users u ON t.createdBy = u.id
+        LEFT JOIN users ua ON t.assignedTo = ua.id
         LEFT JOIN select_care sc ON t.selectCareId = sc.id
-        WHERE c.responsibleSeller = (SELECT firstName || ' ' || lastName FROM users WHERE id = ?)
-        OR t.taggedUserId = ?
-        ORDER BY t.updatedAt DESC
-      `).all(userId, userId);
+        WHERE (c.responsibleSeller = (SELECT firstName || ' ' || lastName FROM users WHERE id = ?)
+        OR t.taggedUserId = ?)
+      `;
+      let params = [userId, userId];
+      if (customerId) {
+        query += " AND t.customerId = ?";
+        params.push(customerId);
+      }
+      query += " ORDER BY t.updatedAt DESC";
+      tickets = db.prepare(query).all(...params);
     }
     res.json(tickets);
   });
@@ -1518,10 +1702,12 @@ async function startServer() {
   app.get("/api/support-tickets/:id", (req, res) => {
     const ticket = db.prepare(`
       SELECT t.*, c.name as customerName, c.responsibleSeller, u.firstName || ' ' || u.lastName as creatorName,
-             sc.brand || ' ' || sc.model as deviceName
+             sc.brand || ' ' || sc.model as deviceName,
+             ua.firstName || ' ' || ua.lastName as assignedName
       FROM support_tickets t
       JOIN customers c ON t.customerId = c.id
       LEFT JOIN users u ON t.createdBy = u.id
+      LEFT JOIN users ua ON t.assignedTo = ua.id
       LEFT JOIN select_care sc ON t.selectCareId = sc.id
       WHERE t.id = ?
     `).get(req.params.id);
@@ -1529,7 +1715,7 @@ async function startServer() {
     if (!ticket) return res.status(404).json({ error: "Ticket not found" });
     
     const { userId, isAdmin, role } = req.query;
-    const isPrivileged = isAdmin === 'true' || isAdmin === '1' || role === 'Administratör' || role === 'Support';
+    const isPrivileged = isAdmin === 'true' || isAdmin === '1' || role?.toString().toLowerCase() === 'administratör' || role?.toString().toLowerCase() === 'support';
 
     // Mark as read when viewed
     if (isPrivileged) {
@@ -1551,7 +1737,7 @@ async function startServer() {
 
   app.post("/api/support-tickets", (req, res) => {
     try {
-      const { customerId, selectCareId, title, description, status, priority, createdBy } = req.body;
+      const { customerId, selectCareId, title, description, status, priority, createdBy, assignedTo } = req.body;
       
       if (!customerId || !title) {
         return res.status(400).json({ error: "Företag och titel krävs" });
@@ -1560,20 +1746,30 @@ async function startServer() {
       const ticketNumber = `SUP-${Date.now().toString().slice(-6)}${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
       
       const user = db.prepare('SELECT isAdmin, role FROM users WHERE id = ?').get(createdBy) as any;
-      const isPrivileged = user && (user.isAdmin === 1 || user.role === 'Administratör' || user.role === 'Support');
+      const isPrivileged = user && (user.isAdmin === 1 || user.role?.toLowerCase() === 'administratör' || user.role?.toLowerCase() === 'support');
       
-      const isReadByAdmin = isPrivileged ? 1 : 0;
+      // If assigned to a privileged user, set isReadByAdmin to 0 so they get a notification
+      // regardless of who created it.
+      let isReadByAdmin = isPrivileged ? 1 : 0;
+      if (assignedTo) {
+        // If assigned to someone, we want that person to see a notification
+        isReadByAdmin = 0;
+      } else if (!isPrivileged) {
+        // If not assigned and created by a non-privileged user, admins should see it
+        isReadByAdmin = 0;
+      }
+      
       const isReadByCreator = isPrivileged ? 0 : 1;
 
       const result = db.prepare(`
-        INSERT INTO support_tickets (ticketNumber, customerId, selectCareId, title, description, status, priority, createdBy, isReadByAdmin, isReadByCreator)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(ticketNumber, customerId, selectCareId || null, title, description, status || 'Registrerad', priority || 'Normal', createdBy || null, isReadByAdmin, isReadByCreator);
+        INSERT INTO support_tickets (ticketNumber, customerId, selectCareId, title, description, status, priority, createdBy, assignedTo, isReadByAdmin, isReadByCreator)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(ticketNumber, customerId, selectCareId || null, title, description, status || 'Registrerad', priority || 'Normal', createdBy || null, assignedTo || null, isReadByAdmin, isReadByCreator);
       
       db.prepare(`
         INSERT INTO support_ticket_logs (ticketId, userId, action, note)
         VALUES (?, ?, ?, ?)
-      `).run(result.lastInsertRowid, createdBy || null, 'Skapad', 'Ärendet har registrerats');
+      `).run(result.lastInsertRowid, createdBy || null, 'Skapad', assignedTo ? `Ärendet har registrerats och tilldelats` : 'Ärendet har registrerats');
       
       res.json({ id: result.lastInsertRowid, ticketNumber });
     } catch (error) {
@@ -1590,7 +1786,7 @@ async function startServer() {
     
     db.transaction(() => {
       const user = db.prepare('SELECT isAdmin, role FROM users WHERE id = ?').get(userId) as any;
-      const isPrivileged = user && (user.isAdmin === 1 || user.role === 'Administratör' || user.role === 'Support');
+      const isPrivileged = user && (user.isAdmin === 1 || user.role?.toLowerCase() === 'administratör' || user.role?.toLowerCase() === 'support');
 
       db.prepare(`
         UPDATE support_tickets 
@@ -1635,7 +1831,7 @@ async function startServer() {
     
     db.transaction(() => {
       const user = db.prepare('SELECT isAdmin, role FROM users WHERE id = ?').get(userId) as any;
-      const isPrivileged = user && (user.isAdmin === 1 || user.role === 'Administratör' || user.role === 'Support');
+      const isPrivileged = user && (user.isAdmin === 1 || user.role?.toLowerCase() === 'administratör' || user.role?.toLowerCase() === 'support');
 
       db.prepare(`
         INSERT INTO support_ticket_logs (ticketId, userId, action, note)
@@ -1739,119 +1935,107 @@ async function startServer() {
 
   // Statistics
   app.get("/api/stats", (req, res) => {
-    const { sellerId, isAdmin } = req.query;
+    const { sellerId, isAdmin, year } = req.query;
     const isUserAdmin = isAdmin === 'true' || isAdmin === '1';
     
-    // Get current year
-    const currentYear = new Date().getFullYear();
+    // Get year from query or default to current year
+    const targetYear = year ? parseInt(year as string) : new Date().getFullYear();
+    const yearStr = targetYear.toString();
     
-    // Generate all months for the current year
+    // Generate all months for the target year
     const months = Array.from({ length: 12 }, (_, i) => {
       const month = i + 1;
-      return `${currentYear}-${month.toString().padStart(2, '0')}`;
+      return `${yearStr}-${month.toString().padStart(2, '0')}`;
     });
 
     // Determine filtering
     let filterClause = '';
-    let filterParams: any[] = [currentYear.toString()];
+    let filterParams: any[] = [yearStr];
     let customerFilterClause = '';
     let customerFilterParams: any[] = [];
 
-    if (sellerId && (isUserAdmin || sellerId)) {
+    const sId = sellerId && sellerId !== 'undefined' && sellerId !== 'null' && sellerId !== '' ? Number(sellerId) : null;
+
+    if (sId !== null) {
       filterClause = 'AND sellerId = ?';
-      filterParams.push(sellerId);
+      filterParams.push(sId);
       
       // For customers, we need to filter by responsibleSeller name
-      const user = db.prepare('SELECT firstName, lastName FROM users WHERE id = ?').get(sellerId) as any;
+      const user = db.prepare('SELECT firstName, lastName FROM users WHERE id = ?').get(sId) as any;
       if (user) {
         const fullName = `${user.firstName} ${user.lastName}`;
         customerFilterClause = 'WHERE responsibleSeller = ?';
         customerFilterParams.push(fullName);
       }
     } else if (!isUserAdmin) {
+      // If not admin and no sellerId provided, this shouldn't happen with correct frontend logic
+      // but we'll return an empty state or error
       return res.status(403).json({ error: "Obehörig åtkomst" });
     }
 
     const customerCount = db.prepare(`SELECT COUNT(*) as count FROM customers ${customerFilterClause}`).get(...customerFilterParams).count;
 
-    // Antal mobiler sålda per månad (Equipment)
-    const equipmentSalesRaw = db.prepare(`
-      SELECT strftime('%Y-%m', purchaseDate) as month, COUNT(*) as count, SUM(customerPrice) as revenue
-      FROM equipment
+    // Helper to get monthly stats
+    const getMonthlyStats = (table: string, dateCol: string, revenueCol: string) => {
+      const raw = db.prepare(`
+        SELECT strftime('%Y-%m', ${dateCol}) as month, COUNT(*) as count, SUM(${revenueCol}) as revenue
+        FROM ${table}
+        WHERE strftime('%Y', ${dateCol}) = ? ${filterClause}
+        GROUP BY month
+      `).all(...filterParams);
+
+      return months.map(m => {
+        const found = raw.find((s: any) => s.month === m);
+        return {
+          month: m,
+          count: found ? found.count : 0,
+          revenue: found ? found.revenue : 0
+        };
+      });
+    };
+
+    const equipmentSales = getMonthlyStats('equipment', 'purchaseDate', 'customerPrice');
+    const selectCareSales = getMonthlyStats('select_care', 'purchaseDate', 'monthlyFee');
+    const drivingLogSales = getMonthlyStats('driving_logs', 'createdAt', 'monthlyFee');
+    const itEquipmentSales = getMonthlyStats('it_equipment', 'purchaseDate', 'customerPrice');
+
+    // Top items (filtered by year and seller)
+    const topModel = db.prepare(`
+      SELECT brand, model, COUNT(*) as count 
+      FROM equipment 
       WHERE strftime('%Y', purchaseDate) = ? ${filterClause}
-      GROUP BY month
-    `).all(...filterParams);
-
-    const equipmentSales = months.map(m => {
-      const found = equipmentSalesRaw.find(s => s.month === m);
-      return {
-        month: m,
-        count: found ? found.count : 0,
-        revenue: found ? found.revenue : 0
-      };
-    });
-
-    // Antal Select Care per månad
-    const selectCareSalesRaw = db.prepare(`
-      SELECT strftime('%Y-%m', purchaseDate) as month, COUNT(*) as count, SUM(monthlyFee) as revenue
-      FROM select_care
-      WHERE strftime('%Y', purchaseDate) = ? ${filterClause}
-      GROUP BY month
-    `).all(...filterParams);
-
-    const selectCareSales = months.map(m => {
-      const found = selectCareSalesRaw.find(s => s.month === m);
-      return {
-        month: m,
-        count: found ? found.count : 0,
-        revenue: found ? found.revenue : 0
-      };
-    });
-
-    // Antal Körjournaler per månad
-    const drivingLogSalesRaw = db.prepare(`
-      SELECT strftime('%Y-%m', createdAt) as month, COUNT(*) as count, SUM(monthlyFee) as revenue
-      FROM driving_logs
-      WHERE strftime('%Y', createdAt) = ? ${filterClause}
-      GROUP BY month
-    `).all(...filterParams);
-
-    const drivingLogSales = months.map(m => {
-      const found = drivingLogSalesRaw.find(s => s.month === m);
-      return {
-        month: m,
-        count: found ? found.count : 0,
-        revenue: found ? found.revenue : 0
-      };
-    });
-
-    // Mest sålda mobil (ENBART från equipment)
-    const topModel = db.prepare('SELECT brand, model, COUNT(*) as count FROM equipment GROUP BY brand, model ORDER BY count DESC LIMIT 1').get();
+      GROUP BY brand, model 
+      ORDER BY count DESC 
+      LIMIT 1
+    `).get(...filterParams);
     
-    // Mest sålda mobiler (Top 5) - Global
-    const topMobiles = db.prepare('SELECT brand, model, COUNT(*) as count FROM equipment GROUP BY brand, model ORDER BY count DESC LIMIT 5').all();
+    const topMobiles = db.prepare(`
+      SELECT brand, model, COUNT(*) as count 
+      FROM equipment 
+      WHERE strftime('%Y', purchaseDate) = ? ${filterClause}
+      GROUP BY brand, model 
+      ORDER BY count DESC 
+      LIMIT 5
+    `).all(...filterParams);
 
-    // Omsättning
-    const equipmentRevenueQuery = filterClause
-      ? `SELECT SUM(customerPrice) as total FROM equipment WHERE 1=1 ${filterClause}`
-      : 'SELECT SUM(customerPrice) as total FROM equipment';
-    const equipmentRevenue = db.prepare(equipmentRevenueQuery).get(filterClause ? filterParams.slice(1) : []).total || 0;
+    // Total Revenue (filtered by year and seller)
+    const getSum = (table: string, dateCol: string, col: string) => {
+      return db.prepare(`
+        SELECT SUM(${col}) as total 
+        FROM ${table} 
+        WHERE strftime('%Y', ${dateCol}) = ? ${filterClause}
+      `).get(...filterParams).total || 0;
+    };
 
-    const selectCareRevenueQuery = filterClause
-      ? `SELECT SUM(monthlyFee) as total FROM select_care WHERE 1=1 ${filterClause}`
-      : 'SELECT SUM(monthlyFee) as total FROM select_care';
-    const selectCareRevenue = db.prepare(selectCareRevenueQuery).get(filterClause ? filterParams.slice(1) : []).total || 0;
+    const equipmentRevenue = getSum('equipment', 'purchaseDate', 'customerPrice');
+    const selectCareRevenue = getSum('select_care', 'purchaseDate', 'monthlyFee');
+    const drivingLogRevenue = getSum('driving_logs', 'createdAt', 'monthlyFee');
 
-    const drivingLogRevenueQuery = filterClause
-      ? `SELECT SUM(monthlyFee) as total FROM driving_logs WHERE 1=1 ${filterClause}`
-      : 'SELECT SUM(monthlyFee) as total FROM driving_logs';
-    const drivingLogRevenue = db.prepare(drivingLogRevenueQuery).get(filterClause ? filterParams.slice(1) : []).total || 0;
-
-    // Driving Logs count
-    const drivingLogsCountQuery = filterClause
-      ? `SELECT COUNT(*) as count FROM driving_logs WHERE 1=1 ${filterClause}`
-      : 'SELECT COUNT(*) as count FROM driving_logs';
-    const drivingLogsCount = db.prepare(drivingLogsCountQuery).get(filterClause ? filterParams.slice(1) : []).count || 0;
+    const drivingLogsCount = db.prepare(`
+      SELECT COUNT(*) as count 
+      FROM driving_logs 
+      WHERE strftime('%Y', createdAt) = ? ${filterClause}
+    `).get(...filterParams).count || 0;
 
     // Expiring Select Care (within 6 months)
     const sixMonthsFromNow = new Date();
@@ -1861,60 +2045,49 @@ async function startServer() {
     let expiringSelectCare;
     let expiringContracts;
 
-    if (filterClause) {
-      expiringSelectCare = db.prepare(`
-        SELECT sc.*, c.name as customerName
-        FROM select_care sc
-        JOIN customers c ON sc.customerId = c.id
-        WHERE sc.endDate <= ? AND sc.endDate >= date('now') ${filterClause.replace('sellerId', 'sc.sellerId')}
-        ORDER BY sc.endDate ASC
-      `).all(sixMonthsStr, filterParams[1]);
+    const expiringFilterClause = sId !== null ? 'AND sellerId = ?' : '';
+    const expiringParams = sId !== null ? [sixMonthsStr, sId] : [sixMonthsStr];
 
-      expiringContracts = db.prepare(`
-        SELECT con.*, c.name as customerName
-        FROM contracts con
-        JOIN customers c ON con.customerId = c.id
-        WHERE con.endDate <= ? AND con.endDate >= date('now') ${filterClause.replace('sellerId', 'con.sellerId')}
-        ORDER BY con.endDate ASC
-      `).all(sixMonthsStr, filterParams[1]);
-    } else {
-      expiringSelectCare = db.prepare(`
-        SELECT sc.*, c.name as customerName
-        FROM select_care sc
-        JOIN customers c ON sc.customerId = c.id
-        WHERE sc.endDate <= ? AND sc.endDate >= date('now')
-        ORDER BY sc.endDate ASC
-      `).all(sixMonthsStr);
+    expiringSelectCare = db.prepare(`
+      SELECT sc.*, c.name as customerName
+      FROM select_care sc
+      JOIN customers c ON sc.customerId = c.id
+      WHERE sc.endDate <= ? AND sc.endDate >= date('now') ${expiringFilterClause}
+      ORDER BY sc.endDate ASC
+    `).all(...expiringParams);
 
-      expiringContracts = db.prepare(`
-        SELECT con.*, c.name as customerName
-        FROM contracts con
-        JOIN customers c ON con.customerId = c.id
-        WHERE con.endDate <= ? AND con.endDate >= date('now')
-        ORDER BY con.endDate ASC
-      `).all(sixMonthsStr);
-    }
+    expiringContracts = db.prepare(`
+      SELECT con.*, c.name as customerName
+      FROM contracts con
+      JOIN customers c ON con.customerId = c.id
+      WHERE con.endDate <= ? AND con.endDate >= date('now') ${expiringFilterClause}
+      ORDER BY con.endDate ASC
+    `).all(...expiringParams);
 
+    // Top Sellers (filtered by year)
     const topSellers = db.prepare(`
       SELECT u.firstName, u.lastName, SUM(t.total) as totalRevenue
       FROM (
-        SELECT sellerId, SUM(customerPrice) as total FROM equipment GROUP BY sellerId
+        SELECT sellerId, SUM(customerPrice) as total FROM equipment WHERE strftime('%Y', purchaseDate) = ? GROUP BY sellerId
         UNION ALL
-        SELECT sellerId, SUM(monthlyFee) as total FROM select_care GROUP BY sellerId
+        SELECT sellerId, SUM(monthlyFee) as total FROM select_care WHERE strftime('%Y', purchaseDate) = ? GROUP BY sellerId
         UNION ALL
-        SELECT sellerId, SUM(monthlyFee) as total FROM driving_logs GROUP BY sellerId
+        SELECT sellerId, SUM(monthlyFee) as total FROM driving_logs WHERE strftime('%Y', createdAt) = ? GROUP BY sellerId
+        UNION ALL
+        SELECT sellerId, SUM(customerPrice) as total FROM it_equipment WHERE strftime('%Y', purchaseDate) = ? GROUP BY sellerId
       ) t
       JOIN users u ON t.sellerId = u.id
       GROUP BY t.sellerId
       ORDER BY totalRevenue DESC
       LIMIT 10
-    `).all();
+    `).all(yearStr, yearStr, yearStr, yearStr);
 
     res.json({
       customerCount,
       equipmentSales,
       selectCareSales,
       drivingLogSales,
+      itEquipmentSales,
       topModel,
       equipmentRevenue,
       selectCareRevenue,
