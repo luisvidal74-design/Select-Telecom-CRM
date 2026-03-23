@@ -11,6 +11,7 @@ export interface User {
   isSupport: number;
   customerId?: number;
   lastReadNewsTimestamp?: string;
+  office?: string;
 }
 
 export interface Customer {
@@ -162,6 +163,7 @@ export interface DrivingLog {
   monthlyFee?: number;
   createdAt: string;
   sellerId?: number;
+  password?: string;
 }
 
 export interface News {
@@ -187,6 +189,7 @@ export interface Stats {
   equipmentRevenue: number;
   selectCareRevenue: number;
   drivingLogRevenue: number;
+  itRevenue: number;
   drivingLogsCount: number;
   expiringSelectCare: (SelectCare & { customerName: string })[];
   expiringContracts: (Contract & { customerName: string })[];

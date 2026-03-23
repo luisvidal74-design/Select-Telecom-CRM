@@ -123,11 +123,11 @@ export default function Dashboard() {
       description: (user?.isAdmin === 1 || user?.isSupport === 1) ? 'Avtal som löper ut snart' : 'Mina avtal som löper ut snart'
     },
     { 
-      title: 'Körjournaler', 
-      value: stats?.drivingLogsCount || 0, 
-      icon: Calendar, 
-      color: 'bg-amber-500',
-      description: 'Registrerade körjournaler'
+      title: 'Omsättning IT', 
+      value: `${(stats?.itRevenue || 0).toLocaleString()} kr`, 
+      icon: Monitor, 
+      color: 'bg-sky-500',
+      description: 'Total IT-försäljning'
     },
     { 
       title: 'Omsättning Körjournaler', 

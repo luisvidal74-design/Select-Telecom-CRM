@@ -106,7 +106,7 @@ export default function CustomerDetails() {
   const [suggestions, setSuggestions] = useState<{ brands: string[], models: string[], colors: string[], memories: string[] }>({ brands: [], models: [], colors: [], memories: [] });
   const [itSuggestions, setItSuggestions] = useState<{ brands: string[], models: string[], memory: string[], purchasePlaces: string[] }>({ brands: [], models: [], memory: [], purchasePlaces: [] });
   const [customerForm, setCustomerForm] = useState({ name: '', orgNumber: '', address: '', city: '', zipCode: '', contactPerson: '', contactPhone: '', responsibleSeller: '', website: '', services: '' });
-  const [drivingLogForm, setDrivingLogForm] = useState({ regNo: '', driverName: '', email: '', deviceType: '', schema: '', monthlyFee: 0, sellerId: 0 });
+  const [drivingLogForm, setDrivingLogForm] = useState({ regNo: '', driverName: '', email: '', deviceType: '', schema: '', monthlyFee: 0, sellerId: 0, password: '' });
   const [drivingLogSellerId, setDrivingLogSellerId] = useState<number>(0);
   const [contractForm, setContractForm] = useState({
     type: 'Telefoniavtal',
@@ -817,7 +817,8 @@ export default function CustomerDetails() {
         deviceType: item.deviceType || '',
         schema: item.schema || '',
         monthlyFee: item.monthlyFee || 0,
-        sellerId: item.sellerId || 0
+        sellerId: item.sellerId || 0,
+        password: item.password || ''
       });
       setIsEditDrivingLogModalOpen(true);
     }
@@ -3968,15 +3969,26 @@ export default function CustomerDetails() {
                     />
                   </div>
                 </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">E-post</label>
-                  <input 
-                    required
-                    type="email"
-                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-xl outline-none focus:ring-2 focus:ring-primary transition-all text-slate-900 dark:text-white"
-                    value={drivingLogForm.email}
-                    onChange={e => setDrivingLogForm({...drivingLogForm, email: e.target.value})}
-                  />
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">E-post</label>
+                    <input 
+                      required
+                      type="email"
+                      className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-xl outline-none focus:ring-2 focus:ring-primary transition-all text-slate-900 dark:text-white"
+                      value={drivingLogForm.email}
+                      onChange={e => setDrivingLogForm({...drivingLogForm, email: e.target.value})}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Lösenord</label>
+                    <input 
+                      type="text"
+                      className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-xl outline-none focus:ring-2 focus:ring-primary transition-all text-slate-900 dark:text-white"
+                      value={drivingLogForm.password || ''}
+                      onChange={e => setDrivingLogForm({...drivingLogForm, password: e.target.value})}
+                    />
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">

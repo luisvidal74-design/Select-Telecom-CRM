@@ -328,7 +328,7 @@ export default function Layout() {
                       setIsNewsPopoverOpen(false);
                       navigate('/nyheter');
                     }}
-                    className="absolute top-full mt-2 right-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl p-4 z-50 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition-all min-w-[160px] animate-in fade-in slide-in-from-top-2"
+                    className="absolute top-full mt-2 right-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl p-4 z-50 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition-all min-w-[240px] w-max animate-in fade-in slide-in-from-top-2"
                   >
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center">

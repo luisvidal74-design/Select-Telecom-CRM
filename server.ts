@@ -62,6 +62,10 @@ try {
 } catch (e) {}
 
 try {
+  db.prepare("ALTER TABLE users ADD COLUMN office TEXT").run();
+} catch (e) {}
+
+try {
   db.prepare("ALTER TABLE users ADD COLUMN customerId INTEGER").run();
 } catch (e) {}
 
@@ -408,6 +412,7 @@ try { db.prepare('ALTER TABLE driving_logs ADD COLUMN sellerId INTEGER').run(); 
 try { db.prepare('ALTER TABLE driving_logs ADD COLUMN deviceType TEXT').run(); } catch (e) {}
 try { db.prepare('ALTER TABLE driving_logs ADD COLUMN schema TEXT').run(); } catch (e) {}
 try { db.prepare('ALTER TABLE driving_logs ADD COLUMN monthlyFee REAL').run(); } catch (e) {}
+try { db.prepare('ALTER TABLE driving_logs ADD COLUMN password TEXT').run(); } catch (e) {}
 try { db.prepare('ALTER TABLE select_care_logs ADD COLUMN userId INTEGER').run(); } catch (e) {}
 try { db.prepare("ALTER TABLE support_tickets ADD COLUMN isRead INTEGER DEFAULT 0").run(); } catch (e) {}
 try { db.prepare("ALTER TABLE support_tickets ADD COLUMN isReadByAdmin INTEGER DEFAULT 0").run(); } catch (e) {}
@@ -537,12 +542,12 @@ async function startServer() {
   });
 
   app.post("/api/auth/register", (req, res) => {
-    const { firstName, lastName, email, password, phone } = req.body;
+    const { firstName, lastName, email, password, phone, office } = req.body;
     try {
       db.prepare(`
-        INSERT INTO users (firstName, lastName, email, password, phone, status)
-        VALUES (?, ?, ?, ?, ?, 'pending')
-      `).run(firstName, lastName, email, password, phone);
+        INSERT INTO users (firstName, lastName, email, password, phone, status, office)
+        VALUES (?, ?, ?, ?, ?, 'pending', ?)
+      `).run(firstName, lastName, email, password, phone, office || null);
       res.json({ success: true });
     } catch (e) {
       res.status(400).json({ error: "E-postadressen används redan." });
@@ -569,7 +574,7 @@ async function startServer() {
 
   app.put("/api/users/:id", (req, res) => {
     const { id } = req.params;
-    const { firstName, lastName, password, profilePic, role, isAdmin, isSupport, phone } = req.body;
+    const { firstName, lastName, password, profilePic, role, isAdmin, isSupport, phone, office } = req.body;
     
     // Security: Only admins can change roles or admin status
     // We need to check the requester's status, but for now we'll just be careful with what we update
@@ -579,7 +584,7 @@ async function startServer() {
     if (!currentUser) return res.status(404).json({ error: "Användaren hittades inte" });
 
     if (password) {
-      db.prepare('UPDATE users SET firstName = ?, lastName = ?, password = ?, profilePic = ?, role = ?, isAdmin = ?, isSupport = ?, phone = ? WHERE id = ?')
+      db.prepare('UPDATE users SET firstName = ?, lastName = ?, password = ?, profilePic = ?, role = ?, isAdmin = ?, isSupport = ?, phone = ?, office = ? WHERE id = ?')
         .run(
           firstName || currentUser.firstName, 
           lastName || currentUser.lastName, 
@@ -589,10 +594,11 @@ async function startServer() {
           isAdmin !== undefined ? isAdmin : currentUser.isAdmin,
           isSupport !== undefined ? isSupport : currentUser.isSupport,
           phone || currentUser.phone,
+          office || currentUser.office,
           id
         );
     } else {
-      db.prepare('UPDATE users SET firstName = ?, lastName = ?, profilePic = ?, role = ?, isAdmin = ?, isSupport = ?, phone = ? WHERE id = ?')
+      db.prepare('UPDATE users SET firstName = ?, lastName = ?, profilePic = ?, role = ?, isAdmin = ?, isSupport = ?, phone = ?, office = ? WHERE id = ?')
         .run(
           firstName || currentUser.firstName, 
           lastName || currentUser.lastName, 
@@ -601,6 +607,7 @@ async function startServer() {
           isAdmin !== undefined ? isAdmin : currentUser.isAdmin,
           isSupport !== undefined ? isSupport : currentUser.isSupport,
           phone || currentUser.phone,
+          office || currentUser.office,
           id
         );
     }
@@ -1236,7 +1243,7 @@ async function startServer() {
     const customerId = req.params.id;
 
     const deleteStmt = db.prepare('DELETE FROM driving_logs WHERE customerId = ?');
-    const insertStmt = db.prepare('INSERT INTO driving_logs (customerId, regNo, driverName, email, sellerId, deviceType, schema, monthlyFee) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+    const insertStmt = db.prepare('INSERT INTO driving_logs (customerId, regNo, driverName, email, sellerId, deviceType, schema, monthlyFee, password) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
     const checkUserStmt = db.prepare('SELECT id FROM customer_users WHERE customerId = ? AND email = ?');
     const insertUserStmt = db.prepare('INSERT INTO customer_users (customerId, firstName, lastName, email, role) VALUES (?, ?, ?, ?, ?)');
     const updateUserStmt = db.prepare('UPDATE customer_users SET firstName = ?, lastName = ? WHERE id = ?');
@@ -1244,7 +1251,7 @@ async function startServer() {
     const transaction = db.transaction((logsToInsert) => {
       deleteStmt.run(customerId);
       for (const log of logsToInsert) {
-        insertStmt.run(customerId, log.regNo, log.driverName, log.email, sellerId || null, log.deviceType || null, log.schema || null, log.monthlyFee || 0);
+        insertStmt.run(customerId, log.regNo, log.driverName, log.email, sellerId || null, log.deviceType || null, log.schema || null, log.monthlyFee || 0, log.password || null);
         
         // Check if user exists, if not create them, otherwise update
         const existingUser = checkUserStmt.get(customerId, log.email);
@@ -1274,13 +1281,13 @@ async function startServer() {
   });
 
   app.put("/api/driving-logs/:id", (req, res) => {
-    const { regNo, driverName, email, deviceType, schema, monthlyFee, sellerId } = req.body;
+    const { regNo, driverName, email, deviceType, schema, monthlyFee, sellerId, password } = req.body;
     try {
       db.prepare(`
         UPDATE driving_logs 
-        SET regNo = ?, driverName = ?, email = ?, deviceType = ?, schema = ?, monthlyFee = ?, sellerId = ?, updatedAt = CURRENT_TIMESTAMP
+        SET regNo = ?, driverName = ?, email = ?, deviceType = ?, schema = ?, monthlyFee = ?, sellerId = ?, password = ?, updatedAt = CURRENT_TIMESTAMP
         WHERE id = ?
-      `).run(regNo, driverName, email, deviceType || null, schema || null, monthlyFee || 0, sellerId || null, req.params.id);
+      `).run(regNo, driverName, email, deviceType || null, schema || null, monthlyFee || 0, sellerId || null, password || null, req.params.id);
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: "Kunde inte uppdatera körjournal" });
@@ -2122,6 +2129,7 @@ async function startServer() {
     const equipmentRevenue = getSum('equipment', 'purchaseDate', 'customerPrice');
     const selectCareRevenue = getSum('select_care', 'purchaseDate', 'monthlyFee');
     const drivingLogRevenue = getSum('driving_logs', 'createdAt', 'monthlyFee');
+    const itRevenue = getSum('it_equipment', 'purchaseDate', 'customerPrice');
 
     const drivingLogsCount = db.prepare(`
       SELECT COUNT(*) as count 
@@ -2184,6 +2192,7 @@ async function startServer() {
       equipmentRevenue,
       selectCareRevenue,
       drivingLogRevenue,
+      itRevenue,
       drivingLogsCount,
       expiringSelectCare,
       expiringContracts,

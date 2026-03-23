@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Check, X, Shield, User as UserIcon, Mail, Phone, Edit2, Trash2, MoreVertical, ShieldAlert, UserCheck, ShieldCheck } from 'lucide-react';
+import { Check, X, Shield, User as UserIcon, Mail, Phone, Edit2, Trash2, MoreVertical, ShieldAlert, UserCheck, ShieldCheck, MapPin } from 'lucide-react';
 import { User } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
@@ -77,6 +77,7 @@ export default function Users() {
       email: user.email || '',
       phone: user.phone || '',
       role: user.role || '',
+      office: user.office || '',
       isAdmin: user.isAdmin || 0,
       isSupport: user.isSupport || 0
     });
@@ -196,27 +197,39 @@ export default function Users() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 gap-4">
-                  <div className="flex items-center gap-4 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800">
-                    <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-                      <Mail className="w-5 h-5 text-blue-600" />
+                  <div className="grid grid-cols-1 gap-4">
+                    <div className="flex items-center gap-4 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800">
+                      <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                        <Mail className="w-5 h-5 text-blue-600" />
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">E-post</p>
+                        <p className="text-sm font-semibold text-slate-900 dark:text-white">{selectedUser.email}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">E-post</p>
-                      <p className="text-sm font-semibold text-slate-900 dark:text-white">{selectedUser.email}</p>
-                    </div>
-                  </div>
 
-                  <div className="flex items-center gap-4 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800">
-                    <div className="w-10 h-10 rounded-xl bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center">
-                      <Phone className="w-5 h-5 text-indigo-600" />
+                    <div className="flex items-center gap-4 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800">
+                      <div className="w-10 h-10 rounded-xl bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center">
+                        <Phone className="w-5 h-5 text-indigo-600" />
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Telefon</p>
+                        <p className="text-sm font-semibold text-slate-900 dark:text-white">{selectedUser.phone || 'Ej angivet'}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Telefon</p>
-                      <p className="text-sm font-semibold text-slate-900 dark:text-white">{selectedUser.phone || 'Ej angivet'}</p>
-                    </div>
+
+                    {selectedUser.office && (
+                      <div className="flex items-center gap-4 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800">
+                        <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+                          <MapPin className="w-5 h-5 text-slate-600" />
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Kontor</p>
+                          <p className="text-sm font-semibold text-slate-900 dark:text-white">{selectedUser.office}</p>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                </div>
 
                 <div className="flex gap-3 pt-4">
                   <button 
@@ -286,6 +299,17 @@ export default function Users() {
                     value={editForm.role || ''}
                     onChange={(e) => setEditForm({...editForm, role: e.target.value})}
                     placeholder="t.ex. Säljare, Support"
+                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-primary outline-none"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Kontor</label>
+                  <input 
+                    type="text"
+                    value={editForm.office || ''}
+                    onChange={(e) => setEditForm({...editForm, office: e.target.value})}
+                    placeholder="t.ex. Stockholm, Göteborg"
                     className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm focus:ring-2 focus:ring-primary outline-none"
                   />
                 </div>
