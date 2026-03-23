@@ -50,6 +50,8 @@ export function PresenceProvider({ children }: { children: React.ReactNode }) {
           } else {
             alert(data.message);
           }
+        } else if (data.type === 'news_update') {
+          window.dispatchEvent(new CustomEvent('refresh-news-count'));
         }
       } catch (e) {
         console.error('Presence WS Error:', e);

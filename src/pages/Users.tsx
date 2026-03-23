@@ -72,13 +72,13 @@ export default function Users() {
   const openEdit = (user: User) => {
     setSelectedUser(user);
     setEditForm({
-      firstName: user.firstName,
-      lastName: user.lastName,
-      email: user.email,
-      phone: user.phone,
-      role: user.role,
-      isAdmin: user.isAdmin,
-      isSupport: user.isSupport
+      firstName: user.firstName || '',
+      lastName: user.lastName || '',
+      email: user.email || '',
+      phone: user.phone || '',
+      role: user.role || '',
+      isAdmin: user.isAdmin || 0,
+      isSupport: user.isSupport || 0
     });
     setIsEditModalOpen(true);
   };

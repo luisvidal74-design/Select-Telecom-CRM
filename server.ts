@@ -58,6 +58,10 @@ try {
 } catch (e) {}
 
 try {
+  db.prepare("ALTER TABLE users ADD COLUMN lastReadNewsTimestamp TEXT").run();
+} catch (e) {}
+
+try {
   db.prepare("ALTER TABLE users ADD COLUMN customerId INTEGER").run();
 } catch (e) {}
 
@@ -71,10 +75,19 @@ try {
   db.prepare("ALTER TABLE equipment ADD COLUMN trackingNumber TEXT").run();
 } catch (e) {}
 try {
+  db.prepare("ALTER TABLE equipment ADD COLUMN selectNr TEXT").run();
+} catch (e) {}
+try {
   db.prepare("ALTER TABLE equipment ADD COLUMN notes TEXT").run();
 } catch (e) {}
 try {
+  db.prepare("ALTER TABLE it_equipment ADD COLUMN selectNr TEXT").run();
+} catch (e) {}
+try {
   db.prepare("ALTER TABLE select_care ADD COLUMN trackingNumber TEXT").run();
+} catch (e) {}
+try {
+  db.prepare("ALTER TABLE select_care ADD COLUMN selectNr TEXT").run();
 } catch (e) {}
 
 // Migration: Add imageSize to news if it doesn't exist
@@ -185,7 +198,9 @@ db.exec(`
     contractPeriod INTEGER,
     endDate TEXT,
     sellerId INTEGER,
+    contractCategory TEXT,
     customFields TEXT,
+    company TEXT,
     createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(customerId) REFERENCES customers(id),
     FOREIGN KEY(sellerId) REFERENCES users(id)
@@ -200,6 +215,13 @@ db.exec(`
     size INTEGER,
     createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(contractId) REFERENCES contracts(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS contract_companies (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    userId INTEGER,
+    name TEXT,
+    FOREIGN KEY(userId) REFERENCES users(id)
   );
 
   CREATE TABLE IF NOT EXISTS calendar_events (
@@ -371,6 +393,9 @@ try { db.prepare('ALTER TABLE select_care_history ADD COLUMN contractPeriod INTE
 try { db.prepare('ALTER TABLE select_care_history ADD COLUMN endDate TEXT').run(); } catch (e) {}
 try { db.prepare('ALTER TABLE select_care_history ADD COLUMN siemensContractNumber TEXT').run(); } catch (e) {}
 try { db.prepare('ALTER TABLE customer_users ADD COLUMN isAuthorizedBuyer INTEGER DEFAULT 0').run(); } catch (e) {}
+try { db.prepare('ALTER TABLE customer_users ADD COLUMN isDrivingLogAdmin INTEGER DEFAULT 0').run(); } catch (e) {}
+try { db.prepare('ALTER TABLE contracts ADD COLUMN company TEXT').run(); } catch (e) {}
+try { db.prepare('ALTER TABLE contracts ADD COLUMN contractCategory TEXT').run(); } catch (e) {}
 try { db.prepare('ALTER TABLE customers ADD COLUMN services TEXT').run(); } catch (e) {}
 try { db.prepare('ALTER TABLE select_care_history ADD COLUMN deletedBy TEXT').run(); } catch (e) {}
 try { db.prepare('ALTER TABLE customers ADD COLUMN website TEXT').run(); } catch (e) {}
@@ -589,6 +614,13 @@ async function startServer() {
     res.json({ success: true });
   });
 
+  app.post("/api/users/:id/read-news", (req, res) => {
+    const { id } = req.params;
+    const timestamp = new Date().toISOString();
+    db.prepare('UPDATE users SET lastReadNewsTimestamp = ? WHERE id = ?').run(timestamp, id);
+    res.json({ success: true, timestamp });
+  });
+
   // Helper to activate a service for a customer
   const activateService = (customerId: string | number, serviceName: string) => {
     const customer = db.prepare('SELECT services FROM customers WHERE id = ?').get(customerId) as any;
@@ -738,6 +770,10 @@ async function startServer() {
     let selectCare = db.prepare('SELECT * FROM select_care WHERE customerId = ?').all(id);
     let contracts = db.prepare('SELECT * FROM contracts WHERE customerId = ? ORDER BY createdAt DESC').all(id);
     
+    if (!isPrivileged) {
+      contracts = contracts.filter((c: any) => c.sellerId === Number(userId));
+    }
+    
     let itEquipment = db.prepare(`
       SELECT it.*, u.firstName || ' ' || u.lastName as userName, s.firstName || ' ' || s.lastName as sellerName
       FROM it_equipment it
@@ -830,11 +866,11 @@ async function startServer() {
 
   // Customer Users
   app.post("/api/customers/:id/users", (req, res) => {
-    const { firstName, lastName, email, phone, role, office, isAuthorizedBuyer } = req.body;
+    const { firstName, lastName, email, phone, role, office, isAuthorizedBuyer, isDrivingLogAdmin } = req.body;
     db.prepare(`
-      INSERT INTO customer_users (customerId, firstName, lastName, email, phone, role, office, isAuthorizedBuyer)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(req.params.id, firstName, lastName, email, phone, role, office, isAuthorizedBuyer || 0);
+      INSERT INTO customer_users (customerId, firstName, lastName, email, phone, role, office, isAuthorizedBuyer, isDrivingLogAdmin)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(req.params.id, firstName, lastName, email, phone, role, office, isAuthorizedBuyer || 0, isDrivingLogAdmin || 0);
     res.json({ success: true });
   });
 
@@ -844,12 +880,12 @@ async function startServer() {
   });
 
   app.put("/api/customer-users/:id", (req, res) => {
-    const { firstName, lastName, email, phone, role, office, isAuthorizedBuyer } = req.body;
+    const { firstName, lastName, email, phone, role, office, isAuthorizedBuyer, isDrivingLogAdmin } = req.body;
     db.prepare(`
       UPDATE customer_users 
-      SET firstName = ?, lastName = ?, email = ?, phone = ?, role = ?, office = ?, isAuthorizedBuyer = ?
+      SET firstName = ?, lastName = ?, email = ?, phone = ?, role = ?, office = ?, isAuthorizedBuyer = ?, isDrivingLogAdmin = ?
       WHERE id = ?
-    `).run(firstName, lastName, email, phone, role, office, isAuthorizedBuyer || 0, req.params.id);
+    `).run(firstName, lastName, email, phone, role, office, isAuthorizedBuyer || 0, isDrivingLogAdmin || 0, req.params.id);
     res.json({ success: true });
   });
 
@@ -1065,6 +1101,9 @@ async function startServer() {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(customerId, licenseType, email, password || null, price || null, startDate, bindingPeriod, endDate, userId || null, notes || null);
     
+    // Auto-activate "O365 licenser" service
+    activateService(customerId, 'O365 licenser');
+    
     res.json({ id: result.lastInsertRowid });
   });
 
@@ -1174,6 +1213,15 @@ async function startServer() {
       INSERT INTO news (title, content, imageUrl, imageSize, authorId)
       VALUES (?, ?, ?, ?, ?)
     `).run(title, content, imageUrl, imageSize || 'large', authorId);
+    
+    // Broadcast news update to all connected clients
+    const payload = JSON.stringify({ type: 'news_update' });
+    wss.clients.forEach((client) => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(payload);
+      }
+    });
+    
     res.json({ id: result.lastInsertRowid });
   });
 
@@ -1409,23 +1457,41 @@ async function startServer() {
 
   // Contracts
   app.get("/api/contracts", (req, res) => {
-    const { sellerId } = req.query;
+    const { userId, isAdmin, role, sellerId } = req.query;
+    
+    if (!userId) {
+      return res.status(401).json({ error: "Användar-ID saknas." });
+    }
+
+    const isPrivileged = isAdmin === 'true' || isAdmin === '1' || role?.toString().toLowerCase() === 'administratör' || role?.toString().toLowerCase() === 'support';
+    
     let contracts;
-    if (sellerId) {
+    if (isPrivileged) {
+      if (sellerId) {
+        contracts = db.prepare(`
+          SELECT c.*, cust.name as customerName 
+          FROM contracts c 
+          JOIN customers cust ON c.customerId = cust.id 
+          WHERE c.sellerId = ?
+          ORDER BY c.createdAt DESC
+        `).all(sellerId);
+      } else {
+        contracts = db.prepare(`
+          SELECT c.*, cust.name as customerName 
+          FROM contracts c 
+          JOIN customers cust ON c.customerId = cust.id 
+          ORDER BY c.createdAt DESC
+        `).all();
+      }
+    } else {
+      // Non-privileged users only see their own contracts
       contracts = db.prepare(`
         SELECT c.*, cust.name as customerName 
         FROM contracts c 
         JOIN customers cust ON c.customerId = cust.id 
         WHERE c.sellerId = ?
         ORDER BY c.createdAt DESC
-      `).all(sellerId);
-    } else {
-      contracts = db.prepare(`
-        SELECT c.*, cust.name as customerName 
-        FROM contracts c 
-        JOIN customers cust ON c.customerId = cust.id 
-        ORDER BY c.createdAt DESC
-      `).all();
+      `).all(userId);
     }
 
     // Fetch files for each contract
@@ -1463,9 +1529,9 @@ async function startServer() {
     }
 
     const result = db.prepare(`
-      INSERT INTO contracts (customerId, type, startDate, contractPeriod, endDate, sellerId, customFields)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(customerId, type, startDate, contractPeriod, endDate, sellerId, customFields);
+      INSERT INTO contracts (customerId, type, startDate, contractPeriod, endDate, sellerId, contractCategory, customFields, company)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(customerId, type, startDate, contractPeriod, endDate, sellerId, req.body.contractCategory, customFields, req.body.company);
 
     const contractId = result.lastInsertRowid;
 
@@ -1507,9 +1573,9 @@ async function startServer() {
 
     db.prepare(`
       UPDATE contracts 
-      SET customerId = ?, type = ?, startDate = ?, contractPeriod = ?, endDate = ?, sellerId = ?, customFields = ?
+      SET customerId = ?, type = ?, startDate = ?, contractPeriod = ?, endDate = ?, sellerId = ?, contractCategory = ?, customFields = ?, company = ?
       WHERE id = ?
-    `).run(customerId, type, startDate, contractPeriod, endDate, sellerId, customFields, id);
+    `).run(customerId, type, startDate, contractPeriod, endDate, sellerId, req.body.contractCategory, customFields, req.body.company, id);
 
     if (files && files.length > 0) {
       const insertFile = db.prepare('INSERT INTO contract_files (contractId, name, mimeType, data, size) VALUES (?, ?, ?, ?, ?)');
@@ -1572,6 +1638,32 @@ async function startServer() {
       db.prepare('DELETE FROM contracts WHERE id = ?').run(id);
     })();
     res.json({ success: true });
+  });
+
+  // Contract Companies
+  app.get("/api/contract-companies", (req, res) => {
+    const { userId, isAdmin } = req.query;
+    if (!userId) return res.status(400).json({ error: "userId saknas" });
+
+    let companies;
+    if (isAdmin === 'true' || isAdmin === '1') {
+      companies = db.prepare('SELECT * FROM contract_companies ORDER BY name ASC').all();
+    } else {
+      companies = db.prepare('SELECT * FROM contract_companies WHERE userId = ? ORDER BY name ASC').all(userId);
+    }
+    res.json(companies);
+  });
+
+  app.post("/api/contract-companies", (req, res) => {
+    const { userId, name } = req.body;
+    if (!userId || !name) return res.status(400).json({ error: "userId och name saknas" });
+
+    try {
+      db.prepare('INSERT INTO contract_companies (userId, name) VALUES (?, ?)').run(userId, name);
+      res.json({ success: true });
+    } catch (e) {
+      res.status(500).json({ error: "Kunde inte spara företaget" });
+    }
   });
 
   // Support Tickets

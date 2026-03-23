@@ -62,10 +62,16 @@ export default function Contracts() {
   }, [formData.startDate, formData.contractPeriod]);
 
   const fetchContracts = async () => {
+    if (!user) return;
     try {
-      const res = await fetch(`/api/contracts?sellerId=${user?.id}`);
+      const params = new URLSearchParams({
+        userId: user.id.toString(),
+        isAdmin: user.isAdmin ? 'true' : 'false',
+        role: user.role || ''
+      });
+      const res = await fetch(`/api/contracts?${params}`);
       const data = await res.json();
-      setContracts(data);
+      setContracts(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Failed to fetch contracts:', error);
     } finally {
@@ -142,10 +148,10 @@ export default function Contracts() {
     setEditingContract(contract);
     setFormData({
       customerId: contract.customerId.toString(),
-      type: contract.type,
-      startDate: contract.startDate,
-      contractPeriod: contract.contractPeriod,
-      endDate: contract.endDate,
+      type: contract.type || '',
+      startDate: contract.startDate || '',
+      contractPeriod: contract.contractPeriod || 24,
+      endDate: contract.endDate || '',
       customFields: contract.customFields || ''
     });
     setSelectedFiles([]);
@@ -216,10 +222,19 @@ export default function Contracts() {
         <input
           type="text"
           placeholder="Sök på kund eller avtalstyp..."
-          className="w-full pl-12 pr-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl outline-none focus:ring-2 focus:ring-blue-600 transition-all shadow-sm"
+          className="w-full pl-12 pr-10 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl outline-none focus:ring-2 focus:ring-blue-600 transition-all shadow-sm"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
         />
+        {searchQuery && (
+          <button
+            onClick={() => setSearchQuery('')}
+            className="absolute right-3 top-1/2 -translate-y-1/2 bg-slate-400 dark:bg-slate-500 hover:bg-slate-500 dark:hover:bg-slate-400 text-white rounded-full p-0.5 transition-colors"
+            title="Rensa sökning"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        )}
       </div>
 
       {isLoading ? (

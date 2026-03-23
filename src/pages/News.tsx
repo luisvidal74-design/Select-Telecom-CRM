@@ -9,7 +9,7 @@ import remarkGfm from 'remark-gfm';
 import { cn } from '../lib/utils';
 
 export default function NewsPage() {
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
   const [news, setNews] = useState<News[]>([]);
   const [search, setSearch] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -38,6 +38,23 @@ export default function NewsPage() {
 
   useEffect(() => {
     fetchNews();
+    
+    // Mark news as read when visiting the page
+    const markAsRead = async () => {
+      if (!user) return;
+      try {
+        const res = await fetch(`/api/users/${user.id}/read-news`, { method: 'POST' });
+        if (res.ok) {
+          const { timestamp } = await res.json();
+          updateUser({ ...user, lastReadNewsTimestamp: timestamp });
+          // Dispatch event to refresh count in Layout
+          window.dispatchEvent(new CustomEvent('refresh-news-count'));
+        }
+      } catch (error) {
+        console.error('Failed to mark news as read:', error);
+      }
+    };
+    markAsRead();
   }, []);
 
   const handleImagePaste = (e: React.ClipboardEvent) => {
@@ -163,10 +180,19 @@ export default function NewsPage() {
             <input
               type="text"
               placeholder="Sök i nyhetsflödet..."
-              className="w-full pl-12 pr-4 py-3.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all text-sm font-medium shadow-sm"
+              className="w-full pl-12 pr-10 py-3.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all text-sm font-medium shadow-sm"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
+            {search && (
+              <button
+                onClick={() => setSearch('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 bg-slate-400 dark:bg-slate-500 hover:bg-slate-500 dark:hover:bg-slate-400 text-white rounded-full p-0.5 transition-colors"
+                title="Rensa sökning"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
           {isPrivileged && (
             <button 
@@ -306,16 +332,21 @@ export default function NewsPage() {
 
       <AnimatePresence>
         {selectedNews && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-xl">
+          <div 
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-xl cursor-pointer"
+            onClick={() => setSelectedNews(null)}
+          >
             <motion.div 
               initial={{ opacity: 0, scale: 0.9, y: 40 }} 
               animate={{ opacity: 1, scale: 1, y: 0 }} 
               exit={{ opacity: 0, scale: 0.9, y: 40 }}
-              className="bg-white dark:bg-slate-900 w-full max-w-4xl max-h-[90vh] rounded-[40px] shadow-2xl overflow-hidden border border-slate-200 dark:border-slate-800 flex flex-col relative"
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white dark:bg-slate-900 w-full max-w-4xl max-h-[90vh] rounded-[40px] shadow-2xl overflow-hidden border border-slate-200 dark:border-slate-800 flex flex-col relative cursor-default"
             >
               <button 
                 onClick={() => setSelectedNews(null)}
-                className="absolute top-6 right-6 z-10 p-3 bg-white/10 hover:bg-white/20 backdrop-blur-md text-white rounded-full transition-all hover:rotate-90"
+                className="absolute top-6 right-6 z-10 p-3 bg-slate-900/50 hover:bg-slate-900/80 backdrop-blur-md text-white rounded-full transition-all hover:rotate-90 shadow-lg"
+                title="Stäng"
               >
                 <X className="w-6 h-6" />
               </button>
@@ -395,6 +426,15 @@ export default function NewsPage() {
 
                     <div className="markdown-body text-lg lg:text-xl text-slate-600 dark:text-slate-300 leading-relaxed prose dark:prose-invert prose-slate max-w-none whitespace-pre-wrap">
                       <Markdown remarkPlugins={[remarkBreaks, remarkGfm]}>{selectedNews.content}</Markdown>
+                    </div>
+
+                    <div className="pt-8 border-t border-slate-100 dark:border-slate-800 flex justify-center">
+                      <button
+                        onClick={() => setSelectedNews(null)}
+                        className="px-8 py-3 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold rounded-2xl hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                      >
+                        Stäng nyhet
+                      </button>
                     </div>
                   </div>
                 </div>

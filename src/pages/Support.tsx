@@ -330,10 +330,19 @@ export default function Support() {
             <input
               type="text"
               placeholder="Sök på ärendenummer, titel eller kund..."
-              className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl outline-none focus:ring-2 focus:ring-blue-600 transition-all text-sm"
+              className="w-full pl-10 pr-10 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl outline-none focus:ring-2 focus:ring-blue-600 transition-all text-sm"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 bg-slate-400 dark:bg-slate-500 hover:bg-slate-500 dark:hover:bg-slate-400 text-white rounded-full p-0.5 transition-colors"
+                title="Rensa sökning"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
           <button
             onClick={() => setIsModalOpen(true)}
@@ -621,16 +630,26 @@ export default function Support() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800/50">
                       <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest mb-2">Status</p>
-                      <select 
-                        disabled={!canEdit}
-                        value={selectedTicket.status}
-                        onChange={(e) => handleUpdateStatus(e.target.value as any)}
-                        className="w-full bg-transparent text-sm font-bold text-slate-900 dark:text-white outline-none disabled:cursor-not-allowed cursor-pointer"
-                      >
-                        {Object.keys(STATUS_CONFIG).map(s => (
-                          <option key={s} value={s}>{s}</option>
-                        ))}
-                      </select>
+                      <div className="flex items-center gap-2">
+                        <select 
+                          disabled={!canEdit}
+                          value={selectedTicket.status}
+                          onChange={(e) => handleUpdateStatus(e.target.value as any)}
+                          className="flex-1 bg-transparent text-sm font-bold text-slate-900 dark:text-white outline-none disabled:cursor-not-allowed cursor-pointer"
+                        >
+                          {Object.keys(STATUS_CONFIG).map(s => (
+                            <option key={s} value={s}>{s}</option>
+                          ))}
+                        </select>
+                        {selectedTicket.status === 'Avslutad' && canEdit && (
+                          <button
+                            onClick={() => handleUpdateStatus('Registrerad')}
+                            className="px-3 py-1 bg-blue-600 text-white text-[10px] font-bold uppercase tracking-wider rounded-lg hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/20"
+                          >
+                            Återöppna
+                          </button>
+                        )}
+                      </div>
                     </div>
                     <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800/50">
                       <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest mb-2">Kund</p>

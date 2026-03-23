@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Search, Building2, MapPin, User as UserIcon, Phone, ChevronRight, Trash2, ChevronLeft, FileSpreadsheet } from 'lucide-react';
+import { Plus, Search, Building2, MapPin, User as UserIcon, Phone, ChevronRight, Trash2, ChevronLeft, FileSpreadsheet, X } from 'lucide-react';
 import { Customer, User } from '../types';
 import { motion } from 'motion/react';
 import { useAuth } from '../context/AuthContext';
@@ -122,10 +122,19 @@ export default function Customers() {
             <input
               type="text"
               placeholder="Sök på företagsnamn eller org.nr..."
-              className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl outline-none focus:ring-2 focus:ring-primary transition-all text-sm"
+              className="w-full pl-10 pr-10 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl outline-none focus:ring-2 focus:ring-primary transition-all text-sm"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
+            {search && (
+              <button
+                onClick={() => setSearch('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 bg-slate-400 dark:bg-slate-500 hover:bg-slate-500 dark:hover:bg-slate-400 text-white rounded-full p-0.5 transition-colors"
+                title="Rensa sökning"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
           {(user?.isAdmin === 1 || user?.isSupport === 1) && (
             <>

@@ -10,6 +10,7 @@ export interface User {
   isAdmin: number;
   isSupport: number;
   customerId?: number;
+  lastReadNewsTimestamp?: string;
 }
 
 export interface Customer {
@@ -44,6 +45,7 @@ export interface CustomerUser {
   role: string;
   office: string;
   isAuthorizedBuyer?: number; // 0 or 1
+  isDrivingLogAdmin?: number; // 0 or 1
 }
 
 export interface Brand {
@@ -74,6 +76,7 @@ export interface Equipment {
   color: string;
   memory: string;
   imei: string;
+  selectNr?: string;
   purchasePlace: string;
   orderNumber: string;
   purchaseDate: string;
@@ -106,6 +109,7 @@ export interface ITEquipment {
   model: string;
   memory?: string;
   serialNumber: string;
+  selectNr?: string;
   trackingNumber?: string;
   purchasePlace: string;
   orderNumber: string;
@@ -127,6 +131,7 @@ export interface SelectCare {
   color: string;
   memory: string;
   imei: string;
+  selectNr?: string;
   purchasePlace: string;
   orderNumber: string;
   purchaseDate: string;
@@ -207,9 +212,17 @@ export interface Contract {
   contractPeriod: number;
   endDate: string;
   sellerId: number;
+  contractCategory?: 'Kund' | 'Leverantör';
   customFields?: string;
+  company?: string;
   createdAt: string;
   files?: ContractFile[];
+}
+
+export interface ContractCompany {
+  id: number;
+  userId: number;
+  name: string;
 }
 
 export interface SupportTicketLog {

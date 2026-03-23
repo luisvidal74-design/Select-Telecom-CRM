@@ -8,6 +8,7 @@ import {
   ShieldCheck, 
   Plus, 
   ChevronRight,
+  ChevronLeft,
   Monitor,
   Trash2, 
   Edit2, 
@@ -33,9 +34,10 @@ import {
   Loader2,
   Ticket,
   AlertCircle,
-  Send
+  Send,
+  Search
 } from 'lucide-react';
-import { Customer, CustomerUser, Equipment, ITEquipment, SelectCare, Brand, DrivingLog, Contract, ContractFile, User, SupportTicket } from '../types';
+import { Customer, CustomerUser, Equipment, ITEquipment, SelectCare, Brand, DrivingLog, Contract, ContractFile, User, SupportTicket, ContractCompany } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 
@@ -81,6 +83,8 @@ export default function CustomerDetails() {
   const [newO365Type, setNewO365Type] = useState('');
   const [selectedSummary, setSelectedSummary] = useState<{ type: 'user' | 'equipment' | 'it' | 'o365' | 'selectCare' | 'selectCareHistory' | 'contract' | 'drivingLog', item: any } | null>(null);
   const [editingItem, setEditingItem] = useState<{ type: 'user' | 'equipment' | 'it' | 'o365' | 'selectCare' | 'contracts' | 'drivingLogs', id: number } | null>(null);
+  const [contractCompanies, setContractCompanies] = useState<ContractCompany[]>([]);
+  const [newContractCompany, setNewContractCompany] = useState('');
   const [loading, setLoading] = useState(true);
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: string, id: number } | null>(null);
   const [contracts, setContracts] = useState<Contract[]>([]);
@@ -89,12 +93,14 @@ export default function CustomerDetails() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [sellers, setSellers] = useState<User[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 15;
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
-  const [userForm, setUserForm] = useState({ firstName: '', lastName: '', email: '', phone: '', role: '', office: '', isAuthorizedBuyer: 0 });
-  const [equipmentForm, setEquipmentForm] = useState({ brand: '', model: '', color: '', memory: '', imei: '', purchasePlace: '', orderNumber: '', purchaseDate: '', purchasePrice: 0, customerPrice: 0, sellerId: 0, userId: 0, trackingNumber: '', notes: '' });
-  const [itForm, setItForm] = useState({ deviceName: '', brand: '', model: '', memory: '', serialNumber: '', trackingNumber: '', purchasePlace: '', orderNumber: '', purchaseDate: '', purchasePrice: 0, customerPrice: 0, sellerId: 0, userId: 0, comment: '' });
-  const [scForm, setScForm] = useState({ brand: '', model: '', color: '', memory: '', imei: '', purchasePlace: '', orderNumber: '', purchaseDate: '', purchasePrice: 0, monthlyFee: 0, userId: 0, contractPeriod: 24, endDate: '', siemensContractNumber: '', sellerId: 0, trackingNumber: '' });
+  const [userForm, setUserForm] = useState({ firstName: '', lastName: '', email: '', phone: '', role: '', office: '', isAuthorizedBuyer: 0, isDrivingLogAdmin: 0 });
+  const [equipmentForm, setEquipmentForm] = useState({ brand: '', model: '', color: '', memory: '', imei: '', selectNr: '', purchasePlace: '', orderNumber: '', purchaseDate: '', purchasePrice: 0, customerPrice: 0, sellerId: 0, userId: 0, trackingNumber: '', notes: '' });
+  const [itForm, setItForm] = useState({ deviceName: '', brand: '', model: '', memory: '', serialNumber: '', selectNr: '', trackingNumber: '', purchasePlace: '', orderNumber: '', purchaseDate: '', purchasePrice: 0, customerPrice: 0, sellerId: 0, userId: 0, comment: '' });
+  const [scForm, setScForm] = useState({ brand: '', model: '', color: '', memory: '', imei: '', selectNr: '', purchasePlace: '', orderNumber: '', purchaseDate: '', purchasePrice: 0, monthlyFee: 0, userId: 0, contractPeriod: 24, endDate: '', siemensContractNumber: '', sellerId: 0, trackingNumber: '' });
   const [o365Form, setO365Form] = useState({ licenseType: '', email: '', password: '', price: 0, startDate: '', bindingPeriod: 12, endDate: '', userId: 0, notes: '' });
   const [o365LicenseTypes, setO365LicenseTypes] = useState<{ id: number, name: string }[]>([]);
   const [suggestions, setSuggestions] = useState<{ brands: string[], models: string[], colors: string[], memories: string[] }>({ brands: [], models: [], colors: [], memories: [] });
@@ -107,9 +113,21 @@ export default function CustomerDetails() {
     startDate: new Date().toISOString().split('T')[0],
     contractPeriod: 24,
     endDate: '',
+    contractCategory: 'Kund' as 'Kund' | 'Leverantör',
     customFields: '',
+    company: '',
     sellerId: 0
   });
+  const [searchQueries, setSearchQueries] = useState({
+    users: '',
+    equipment: '',
+    it: '',
+    o365: '',
+    selectCare: '',
+    drivingLogs: '',
+    contracts: ''
+  });
+  const [contractFilter, setContractFilter] = useState<'Alla' | 'Kund' | 'Leverantör'>('Alla');
 
   const calculateEndDate = (startDate: string, months: number) => {
     if (!startDate || !months) return '';
@@ -163,7 +181,8 @@ export default function CustomerDetails() {
     if (tab && ['users', 'equipment', 'it', 'o365', 'selectCare', 'drivingLogs', 'contracts', 'support'].includes(tab)) {
       setActiveTab(tab as any);
     }
-  }, [location.search]);
+    setCurrentPage(1);
+  }, [location.search, activeTab]);
 
   const fetchData = async () => {
     if (!user) return;
@@ -176,7 +195,7 @@ export default function CustomerDetails() {
       fetch(`/api/customers/${id}?${params}`),
       fetch('/api/brands'),
       fetch(`/api/customers/${id}/driving-logs`),
-      fetch(`/api/contracts?customerId=${id}`),
+      fetch(`/api/contracts?customerId=${id}&userId=${user.id}&isAdmin=${user.isAdmin}&role=${user.role || ''}`),
       fetch('/api/users'),
       fetch(`/api/support-tickets?customerId=${id}&${params}`),
       fetch('/api/o365-licenses/types')
@@ -189,9 +208,9 @@ export default function CustomerDetails() {
     const ticketsData = await ticketsRes.json();
     const o365TypesData = await o365TypesRes.json();
     
-    setSupportTickets(ticketsData);
-    setO365LicenseTypes(o365TypesData);
-    const sellerUsers = usersData.filter((u: User) => 
+    setSupportTickets(Array.isArray(ticketsData) ? ticketsData : []);
+    setO365LicenseTypes(Array.isArray(o365TypesData) ? o365TypesData : []);
+    const sellerUsers = (Array.isArray(usersData) ? usersData : []).filter((u: User) => 
       u.status === 'approved' && 
       (u.role?.toLowerCase().includes('säljare') || (!u.isAdmin && !u.role))
     );
@@ -202,9 +221,15 @@ export default function CustomerDetails() {
     const defaultSellerId = responsibleSellerUser ? responsibleSellerUser.id : (user?.id || 0);
 
     setCustomer(custData);
-    setDrivingLogs(logsData);
-    setContracts(contractsData);
+    setDrivingLogs(Array.isArray(logsData) ? logsData : []);
+    setContracts(Array.isArray(contractsData) ? contractsData : []);
     setSellers(sellerUsers);
+
+    const companiesRes = await fetch(`/api/contract-companies?userId=${user.id}&isAdmin=${user.isAdmin}`);
+    if (companiesRes.ok) {
+      const companiesData = await companiesRes.json();
+      setContractCompanies(companiesData);
+    }
     
     setEquipmentForm(prev => ({ ...prev, sellerId: defaultSellerId }));
     setItForm(prev => ({ ...prev, sellerId: defaultSellerId }));
@@ -213,13 +238,13 @@ export default function CustomerDetails() {
     setDrivingLogSellerId(defaultSellerId);
 
     setCustomerForm({
-      name: custData.name,
-      orgNumber: custData.orgNumber,
-      address: custData.address,
-      city: custData.city,
-      zipCode: custData.zipCode,
-      contactPerson: custData.contactPerson,
-      contactPhone: custData.contactPhone,
+      name: custData.name || '',
+      orgNumber: custData.orgNumber || '',
+      address: custData.address || '',
+      city: custData.city || '',
+      zipCode: custData.zipCode || '',
+      contactPerson: custData.contactPerson || '',
+      contactPhone: custData.contactPhone || '',
       responsibleSeller: custData.responsibleSeller || '',
       website: custData.website || '',
       services: custData.services || ''
@@ -242,6 +267,101 @@ export default function CustomerDetails() {
     setLoading(false);
   };
 
+  const filteredUsers = (customer?.users || []).filter(u => 
+    `${u.firstName} ${u.lastName}`.toLowerCase().includes(searchQueries.users.toLowerCase()) ||
+    u.email.toLowerCase().includes(searchQueries.users.toLowerCase()) ||
+    u.phone?.toLowerCase().includes(searchQueries.users.toLowerCase()) ||
+    u.role?.toLowerCase().includes(searchQueries.users.toLowerCase())
+  );
+
+  const filteredEquipment = (customer?.equipment || []).filter(e => 
+    e.brand.toLowerCase().includes(searchQueries.equipment.toLowerCase()) ||
+    e.model.toLowerCase().includes(searchQueries.equipment.toLowerCase()) ||
+    e.imei.toLowerCase().includes(searchQueries.equipment.toLowerCase())
+  );
+
+  const filteredIT = (customer?.itEquipment || []).filter(e => 
+    e.brand.toLowerCase().includes(searchQueries.it.toLowerCase()) ||
+    e.model.toLowerCase().includes(searchQueries.it.toLowerCase()) ||
+    e.serialNumber.toLowerCase().includes(searchQueries.it.toLowerCase()) ||
+    e.deviceName?.toLowerCase().includes(searchQueries.it.toLowerCase())
+  );
+
+  const filteredO365 = (customer?.o365Licenses || []).filter(l => 
+    l.licenseType.toLowerCase().includes(searchQueries.o365.toLowerCase()) ||
+    l.email.toLowerCase().includes(searchQueries.o365.toLowerCase())
+  );
+
+  const filteredSelectCare = (customer?.selectCare || []).filter(s => 
+    s.brand.toLowerCase().includes(searchQueries.selectCare.toLowerCase()) ||
+    s.model.toLowerCase().includes(searchQueries.selectCare.toLowerCase()) ||
+    s.imei.toLowerCase().includes(searchQueries.selectCare.toLowerCase())
+  );
+
+  const filteredContracts = contracts.filter(c => {
+    const matchesSearch = c.type.toLowerCase().includes(searchQueries.contracts.toLowerCase()) || 
+          c.id.toString().includes(searchQueries.contracts.toLowerCase());
+    const matchesFilter = contractFilter === 'Alla' || c.contractCategory === contractFilter;
+    return matchesSearch && matchesFilter;
+  });
+
+  const filteredDrivingLogs = drivingLogs.filter(l => 
+    l.regNo.toLowerCase().includes(searchQueries.drivingLogs.toLowerCase()) ||
+    l.driverName.toLowerCase().includes(searchQueries.drivingLogs.toLowerCase())
+  );
+
+  const paginate = (items: any[]) => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return items.slice(startIndex, startIndex + itemsPerPage);
+  };
+
+  const Pagination = ({ totalItems }: { totalItems: number }) => {
+    const totalPages = Math.ceil(totalItems / itemsPerPage);
+    if (totalPages <= 1) return null;
+
+    return (
+      <div className="flex items-center justify-between px-4 py-3 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl mt-4 shadow-sm">
+        <div className="flex items-center gap-2">
+          <p className="text-xs text-slate-500">
+            Visar <span className="font-bold text-slate-900 dark:text-white">{Math.min(totalItems, (currentPage - 1) * itemsPerPage + 1)}</span> till <span className="font-bold text-slate-900 dark:text-white">{Math.min(totalItems, currentPage * itemsPerPage)}</span> av <span className="font-bold text-slate-900 dark:text-white">{totalItems}</span>
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+            disabled={currentPage === 1}
+            className="p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <div className="flex items-center gap-1">
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+              <button
+                key={page}
+                onClick={() => setCurrentPage(page)}
+                className={cn(
+                  "w-8 h-8 rounded-lg text-xs font-bold transition-all",
+                  currentPage === page 
+                    ? "bg-primary text-primary-foreground shadow-md" 
+                    : "hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400"
+                )}
+              >
+                {page}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+            disabled={currentPage === totalPages}
+            className="p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   useEffect(() => {
     fetchData();
   }, [id, user]);
@@ -262,7 +382,7 @@ export default function CustomerDetails() {
       fetchData();
       setIsModalOpen(false);
       setEditingItem(null);
-      setUserForm({ firstName: '', lastName: '', email: '', phone: '', role: '', office: '', isAuthorizedBuyer: 0 });
+      setUserForm({ firstName: '', lastName: '', email: '', phone: '', role: '', office: '', isAuthorizedBuyer: 0, isDrivingLogAdmin: 0 });
     } else {
       const errorData = await res.json();
       alert(`Fel vid sparning: ${errorData.error || res.statusText}`);
@@ -285,7 +405,7 @@ export default function CustomerDetails() {
       fetchData();
       setIsModalOpen(false);
       setEditingItem(null);
-      setEquipmentForm({ brand: '', model: '', color: '', memory: '', imei: '', purchasePlace: '', orderNumber: '', purchaseDate: '', purchasePrice: 0, customerPrice: 0, sellerId: 0, userId: 0, trackingNumber: '', notes: '' });
+      setEquipmentForm({ brand: '', model: '', color: '', memory: '', imei: '', selectNr: '', purchasePlace: '', orderNumber: '', purchaseDate: '', purchasePrice: 0, customerPrice: 0, sellerId: 0, userId: 0, trackingNumber: '', notes: '' });
     } else {
       const errorData = await res.json();
       alert(`Fel vid sparning: ${errorData.error || res.statusText}`);
@@ -308,7 +428,7 @@ export default function CustomerDetails() {
       fetchData();
       setIsModalOpen(false);
       setEditingItem(null);
-      setItForm({ deviceName: '', brand: '', model: '', memory: '', serialNumber: '', trackingNumber: '', purchasePlace: '', orderNumber: '', purchaseDate: '', purchasePrice: 0, customerPrice: 0, sellerId: 0, userId: 0, comment: '' });
+      setItForm({ deviceName: '', brand: '', model: '', memory: '', serialNumber: '', selectNr: '', trackingNumber: '', purchasePlace: '', orderNumber: '', purchaseDate: '', purchasePrice: 0, customerPrice: 0, sellerId: 0, userId: 0, comment: '' });
     } else {
       const errorData = await res.json();
       alert(`Fel vid sparning: ${errorData.error || res.statusText}`);
@@ -331,7 +451,7 @@ export default function CustomerDetails() {
       fetchData();
       setIsModalOpen(false);
       setEditingItem(null);
-      setScForm({ brand: '', model: '', color: '', memory: '', imei: '', purchasePlace: '', orderNumber: '', purchaseDate: '', purchasePrice: 0, monthlyFee: 0, userId: 0, contractPeriod: 24, endDate: '', siemensContractNumber: '', sellerId: 0, trackingNumber: '' });
+      setScForm({ brand: '', model: '', color: '', memory: '', imei: '', selectNr: '', purchasePlace: '', orderNumber: '', purchaseDate: '', purchasePrice: 0, monthlyFee: 0, userId: 0, contractPeriod: 24, endDate: '', siemensContractNumber: '', sellerId: 0, trackingNumber: '' });
     } else {
       const errorData = await res.json();
       alert(`Fel vid sparning: ${errorData.error || res.statusText}`);
@@ -355,7 +475,9 @@ export default function CustomerDetails() {
       fd.append('userId', user?.id.toString() || '');
       fd.append('isAdmin', user?.isAdmin ? 'true' : 'false');
       fd.append('role', user?.role || '');
+      fd.append('contractCategory', contractForm.contractCategory);
       fd.append('customFields', contractForm.customFields);
+      fd.append('company', contractForm.company);
       
       selectedFiles.forEach(file => {
         fd.append('files', file);
@@ -375,7 +497,9 @@ export default function CustomerDetails() {
           startDate: new Date().toISOString().split('T')[0],
           contractPeriod: 24,
           endDate: '',
+          contractCategory: 'Kund',
           customFields: '',
+          company: '',
           sellerId: 0
         });
         fetchData();
@@ -477,6 +601,23 @@ export default function CustomerDetails() {
     }
   };
 
+  const handleAddContractCompany = async () => {
+    if (!newContractCompany || !user) return;
+    const res = await fetch('/api/contract-companies', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: user.id, name: newContractCompany }),
+    });
+    if (res.ok) {
+      setNewContractCompany('');
+      const companiesRes = await fetch(`/api/contract-companies?userId=${user.id}&isAdmin=${user.isAdmin}`);
+      if (companiesRes.ok) {
+        const companiesData = await companiesRes.json();
+        setContractCompanies(companiesData);
+      }
+    }
+  };
+
   const handleAddMemory = async () => {
     if (!newMemory) return;
     const url = activeTab === 'it' ? '/api/it-equipment/memory' : '/api/memories';
@@ -573,27 +714,29 @@ export default function CustomerDetails() {
     setEditingItem({ type, id: item.id });
     if (type === 'user') {
       setUserForm({ 
-        firstName: item.firstName, 
-        lastName: item.lastName, 
-        email: item.email, 
-        phone: item.phone, 
-        role: item.role, 
-        office: item.office,
-        isAuthorizedBuyer: item.isAuthorizedBuyer || 0
+        firstName: item.firstName || '', 
+        lastName: item.lastName || '', 
+        email: item.email || '', 
+        phone: item.phone || '', 
+        role: item.role || '', 
+        office: item.office || '',
+        isAuthorizedBuyer: item.isAuthorizedBuyer || 0,
+        isDrivingLogAdmin: item.isDrivingLogAdmin || 0
       });
       setIsModalOpen(true);
     } else if (type === 'equipment') {
       setEquipmentForm({
-        brand: item.brand,
-        model: item.model,
-        color: item.color,
-        memory: item.memory,
-        imei: item.imei,
-        purchasePlace: item.purchasePlace,
-        orderNumber: item.orderNumber,
-        purchaseDate: item.purchaseDate,
-        purchasePrice: item.purchasePrice,
-        customerPrice: item.customerPrice,
+        brand: item.brand || '',
+        model: item.model || '',
+        color: item.color || '',
+        memory: item.memory || '',
+        imei: item.imei || '',
+        selectNr: item.selectNr || '',
+        purchasePlace: item.purchasePlace || '',
+        orderNumber: item.orderNumber || '',
+        purchaseDate: item.purchaseDate || '',
+        purchasePrice: item.purchasePrice || 0,
+        customerPrice: item.customerPrice || 0,
         sellerId: item.sellerId || 0,
         userId: item.userId || 0,
         trackingNumber: item.trackingNumber || '',
@@ -602,11 +745,12 @@ export default function CustomerDetails() {
       setIsModalOpen(true);
     } else if (type === 'it') {
       setItForm({
-        deviceName: item.deviceName,
-        brand: item.brand,
-        model: item.model,
+        deviceName: item.deviceName || '',
+        brand: item.brand || '',
+        model: item.model || '',
         memory: item.memory || '',
-        serialNumber: item.serialNumber,
+        serialNumber: item.serialNumber || '',
+        selectNr: item.selectNr || '',
         trackingNumber: item.trackingNumber || '',
         purchasePlace: item.purchasePlace || '',
         orderNumber: item.orderNumber || '',
@@ -620,17 +764,18 @@ export default function CustomerDetails() {
       setIsModalOpen(true);
     } else if (type === 'selectCare') {
       setScForm({
-        brand: item.brand,
-        model: item.model,
-        color: item.color,
-        memory: item.memory,
-        imei: item.imei,
-        purchasePlace: item.purchasePlace,
-        orderNumber: item.orderNumber,
-        purchaseDate: item.purchaseDate,
-        purchasePrice: item.purchasePrice,
-        monthlyFee: item.monthlyFee,
-        userId: item.userId,
+        brand: item.brand || '',
+        model: item.model || '',
+        color: item.color || '',
+        memory: item.memory || '',
+        imei: item.imei || '',
+        selectNr: item.selectNr || '',
+        purchasePlace: item.purchasePlace || '',
+        orderNumber: item.orderNumber || '',
+        purchaseDate: item.purchaseDate || '',
+        purchasePrice: item.purchasePrice || 0,
+        monthlyFee: item.monthlyFee || 0,
+        userId: item.userId || 0,
         contractPeriod: item.contractPeriod || 24,
         endDate: item.endDate || '',
         siemensContractNumber: item.siemensContractNumber || '',
@@ -640,33 +785,35 @@ export default function CustomerDetails() {
       setIsModalOpen(true);
     } else if (type === 'o365') {
       setO365Form({
-        licenseType: item.licenseType,
-        email: item.email,
+        licenseType: item.licenseType || '',
+        email: item.email || '',
         password: item.password || '',
         price: item.price || 0,
-        startDate: item.startDate,
-        bindingPeriod: item.bindingPeriod,
-        endDate: item.endDate,
+        startDate: item.startDate || '',
+        bindingPeriod: item.bindingPeriod || 12,
+        endDate: item.endDate || '',
         userId: item.userId || 0,
         notes: item.notes || ''
       });
       setIsModalOpen(true);
     } else if (type === 'contracts') {
       setContractForm({
-        type: item.type,
-        startDate: item.startDate,
-        contractPeriod: item.contractPeriod,
-        endDate: item.endDate,
+        type: item.type || '',
+        startDate: item.startDate || '',
+        contractPeriod: item.contractPeriod || 24,
+        endDate: item.endDate || '',
+        contractCategory: item.contractCategory || 'Kund',
         customFields: item.customFields || '',
+        company: item.company || '',
         sellerId: item.sellerId || 0
       });
       setSelectedFiles([]);
       setIsModalOpen(true);
     } else if (type === 'drivingLogs') {
       setDrivingLogForm({
-        regNo: item.regNo,
-        driverName: item.driverName,
-        email: item.email,
+        regNo: item.regNo || '',
+        driverName: item.driverName || '',
+        email: item.email || '',
         deviceType: item.deviceType || '',
         schema: item.schema || '',
         monthlyFee: item.monthlyFee || 0,
@@ -929,49 +1076,74 @@ export default function CustomerDetails() {
             {activeTab === 'drivingLogs' && 'Körjournaler'}
             {activeTab === 'support' && 'Supportärenden'}
           </h2>
-        {user?.role !== 'Kund' && (
-          user?.isAdmin === 1 || 
-          ((user?.isSupport === 1 || customer?.responsibleSeller === `${user?.firstName} ${user?.lastName}`) && !['users', 'equipment', 'it', 'o365', 'drivingLogs'].includes(activeTab))
-        ) && activeTab !== 'support' && (
-          <button 
-            onClick={() => {
-              if (activeTab === 'drivingLogs') {
-                setIsDrivingLogModalOpen(true);
-              } else {
-                setEditingItem(null);
-                if (activeTab === 'contracts') {
-                  setContractForm({
-                    type: 'Telefoniavtal',
-                    startDate: new Date().toISOString().split('T')[0],
-                    contractPeriod: 24,
-                    endDate: '',
-                    customFields: '',
-                    sellerId: 0
-                  });
-                  setSelectedFiles([]);
-                }
-                setIsModalOpen(true);
-              }
-            }}
-            className="flex items-center justify-center gap-2 px-4 py-2 bg-white dark:bg-slate-900 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-bold shadow-sm hover:bg-slate-50 dark:hover:bg-slate-800 transition-all w-full sm:w-auto"
-          >
-            <Plus className="w-4 h-4" />
-            {activeTab === 'users' && 'Lägg till användare'}
-            {activeTab === 'equipment' && 'Lägg till utrustning'}
-            {activeTab === 'it' && 'Lägg till utrustning'}
-            {activeTab === 'o365' && 'Lägg till licens'}
-            {activeTab === 'selectCare' && 'Lägg till avtal'}
-            {activeTab === 'contracts' && 'Nytt avtal'}
-            {activeTab === 'drivingLogs' && 'Uppdatera lista'}
-          </button>
-        )}
+          <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
+            {activeTab !== 'support' && (
+              <div className="relative w-full sm:w-64">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Sök..."
+                  value={searchQueries[activeTab as keyof typeof searchQueries] || ''}
+                  onChange={(e) => setSearchQueries(prev => ({ ...prev, [activeTab]: e.target.value }))}
+                  className="w-full pl-9 pr-10 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-sm focus:ring-2 focus:ring-primary outline-none transition-all"
+                />
+                {(searchQueries[activeTab as keyof typeof searchQueries] || '') && (
+                  <button
+                    onClick={() => setSearchQueries(prev => ({ ...prev, [activeTab]: '' }))}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 bg-slate-400 dark:bg-slate-500 hover:bg-slate-500 dark:hover:bg-slate-400 text-white rounded-full p-0.5 transition-colors"
+                    title="Rensa sökning"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            )}
+            {user?.role !== 'Kund' && (
+              user?.isAdmin === 1 || 
+              ((user?.isSupport === 1 || customer?.responsibleSeller === `${user?.firstName} ${user?.lastName}`) && !['users', 'equipment', 'it', 'o365', 'drivingLogs'].includes(activeTab))
+            ) && activeTab !== 'support' && (
+              <button 
+                onClick={() => {
+                  if (activeTab === 'drivingLogs') {
+                    setIsDrivingLogModalOpen(true);
+                  } else {
+                    setEditingItem(null);
+                    if (activeTab === 'contracts') {
+                      setContractForm({
+                        type: 'Telefoniavtal',
+                        startDate: new Date().toISOString().split('T')[0],
+                        contractPeriod: 24,
+                        endDate: '',
+                        contractCategory: 'Kund',
+                        customFields: '',
+                        company: '',
+                        sellerId: 0
+                      });
+                      setSelectedFiles([]);
+                    }
+                    setIsModalOpen(true);
+                  }
+                }}
+                className="flex items-center justify-center gap-2 px-4 py-2 bg-white dark:bg-slate-900 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-bold shadow-sm hover:bg-slate-50 dark:hover:bg-slate-800 transition-all w-full sm:w-auto"
+              >
+                <Plus className="w-4 h-4" />
+                {activeTab === 'users' && 'Lägg till användare'}
+                {activeTab === 'equipment' && 'Lägg till utrustning'}
+                {activeTab === 'it' && 'Lägg till utrustning'}
+                {activeTab === 'o365' && 'Lägg till licens'}
+                {activeTab === 'selectCare' && 'Lägg till avtal'}
+                {activeTab === 'contracts' && 'Nytt avtal'}
+                {activeTab === 'drivingLogs' && 'Uppdatera lista'}
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="bg-slate-100 dark:bg-slate-800/50 p-3 rounded-[24px] border border-slate-200 dark:border-slate-800">
           <AnimatePresence mode="wait">
             {activeTab === 'users' && (
               <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-2">
-                {customer.users?.map(cUser => (
+                {paginate(filteredUsers).map(cUser => (
                   <div 
                     key={cUser.id} 
                     onClick={() => setSelectedSummary({ type: 'user', item: cUser })}
@@ -983,10 +1155,13 @@ export default function CustomerDetails() {
                       </div>
                       <div className="flex-1 min-w-0 flex flex-col md:flex-row md:items-center gap-4 md:gap-8">
                         <div className="min-w-[150px]">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <h4 className="font-bold text-slate-900 dark:text-white truncate">{cUser.firstName} {cUser.lastName}</h4>
                             {cUser.isAuthorizedBuyer === 1 && (
                               <span className="px-2 py-0.5 bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 text-[10px] font-bold rounded uppercase tracking-wider">Beställare</span>
+                            )}
+                            {cUser.isDrivingLogAdmin === 1 && (
+                              <span className="px-2 py-0.5 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 text-[10px] font-bold rounded uppercase tracking-wider">Admin Körjournal</span>
                             )}
                           </div>
                           <p className="text-xs text-slate-500 font-medium">{cUser.role}</p>
@@ -1023,12 +1198,13 @@ export default function CustomerDetails() {
                     </div>
                   </div>
                 ))}
+                <Pagination totalItems={filteredUsers.length} />
               </motion.div>
             )}
 
             {activeTab === 'equipment' && (
               <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-2">
-                {customer.equipment?.map(eq => (
+                {paginate(filteredEquipment).map(eq => (
                   <div 
                     key={eq.id} 
                     onClick={() => setSelectedSummary({ type: 'equipment', item: eq })}
@@ -1093,12 +1269,13 @@ export default function CustomerDetails() {
                     </div>
                   </div>
                 ))}
+                <Pagination totalItems={filteredEquipment.length} />
               </motion.div>
             )}
 
             {activeTab === 'it' && (
               <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-2">
-                {customer.itEquipment?.map(it => (
+                {paginate(filteredIT).map(it => (
                   <div 
                     key={it.id} 
                     onClick={() => setSelectedSummary({ type: 'it', item: it })}
@@ -1163,73 +1340,77 @@ export default function CustomerDetails() {
                     </div>
                   </div>
                 ))}
+                <Pagination totalItems={filteredIT.length} />
               </motion.div>
             )}
 
             {activeTab === 'o365' && (
               <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-2">
-                {customer.o365Licenses && customer.o365Licenses.length > 0 ? (
-                  customer.o365Licenses.map(license => (
-                    <div 
-                      key={license.id} 
-                      onClick={() => setSelectedSummary({ type: 'o365', item: license })}
-                      className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-transparent hover:border-primary transition-all cursor-pointer group shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4"
-                    >
-                      <div className="flex items-center gap-4 flex-1 min-w-0">
-                        <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center flex-shrink-0">
-                          <Mail className="w-5 h-5 text-primary" />
-                        </div>
-                        <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 items-center">
-                          <div>
-                            <h4 className="font-bold text-slate-900 dark:text-white whitespace-normal leading-tight">{license.licenseType}</h4>
-                            <p className="text-xs text-slate-500 truncate">{license.email}</p>
+                {filteredO365.length > 0 ? (
+                  <>
+                    {paginate(filteredO365).map(license => (
+                      <div 
+                        key={license.id} 
+                        onClick={() => setSelectedSummary({ type: 'o365', item: license })}
+                        className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-transparent hover:border-primary transition-all cursor-pointer group shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4"
+                      >
+                        <div className="flex items-center gap-4 flex-1 min-w-0">
+                          <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <Mail className="w-5 h-5 text-primary" />
                           </div>
-                          <div className="flex flex-col">
-                            <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Startdatum</span>
-                            <span className="text-xs text-slate-600 dark:text-slate-400 truncate">{license.startDate}</span>
-                          </div>
-                          <div className="flex flex-col">
-                            <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Slutdatum</span>
-                            <span className={cn("text-xs font-bold truncate", getExpirationStatus(license.endDate) === 'expired' ? 'text-red-500' : 'text-slate-600 dark:text-slate-400')}>
-                              {license.endDate}
-                            </span>
-                          </div>
-                          <div className="flex flex-col">
-                            <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Användare</span>
-                            <span className="text-xs text-slate-600 dark:text-slate-400 truncate">{license.userName || 'Ej kopplad'}</span>
-                          </div>
-                          <div className="flex flex-col">
-                            <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Pris</span>
-                            <span className="text-xs font-bold text-primary">{license.price?.toLocaleString() || 0} kr</span>
-                          </div>
-                          {license.notes && (
-                            <div className="flex flex-col md:col-span-5 mt-2 p-2 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
-                              <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Noteringar</span>
-                              <span className="text-xs text-slate-600 dark:text-slate-400 whitespace-pre-wrap">{license.notes}</span>
+                          <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 items-center">
+                            <div>
+                              <h4 className="font-bold text-slate-900 dark:text-white whitespace-normal leading-tight">{license.licenseType}</h4>
+                              <p className="text-xs text-slate-500 truncate">{license.email}</p>
                             </div>
+                            <div className="flex flex-col">
+                              <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Startdatum</span>
+                              <span className="text-xs text-slate-600 dark:text-slate-400 truncate">{license.startDate}</span>
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Slutdatum</span>
+                              <span className={cn("text-xs font-bold truncate", getExpirationStatus(license.endDate) === 'expired' ? 'text-red-500' : 'text-slate-600 dark:text-slate-400')}>
+                                {license.endDate}
+                              </span>
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Användare</span>
+                              <span className="text-xs text-slate-600 dark:text-slate-400 truncate">{license.userName || 'Ej kopplad'}</span>
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Pris</span>
+                              <span className="text-xs font-bold text-primary">{license.price?.toLocaleString() || 0} kr</span>
+                            </div>
+                            {license.notes && (
+                              <div className="flex flex-col md:col-span-5 mt-2 p-2 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
+                                <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Noteringar</span>
+                                <span className="text-xs text-slate-600 dark:text-slate-400 whitespace-pre-wrap">{license.notes}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-end gap-1 border-t md:border-t-0 pt-2 md:pt-0 border-slate-50 dark:border-slate-800">
+                          {user?.isAdmin === 1 && (
+                            <>
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); handleEdit('o365', license); }} 
+                                className="p-2 text-slate-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </button>
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ type: 'o365-licenses', id: license.id }); }} 
+                                className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 rounded-lg transition-colors"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </>
                           )}
                         </div>
                       </div>
-                      <div className="flex items-center justify-end gap-1 border-t md:border-t-0 pt-2 md:pt-0 border-slate-50 dark:border-slate-800">
-                        {user?.isAdmin === 1 && (
-                          <>
-                            <button 
-                              onClick={(e) => { e.stopPropagation(); handleEdit('o365', license); }} 
-                              className="p-2 text-slate-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
-                            >
-                              <Edit2 className="w-4 h-4" />
-                            </button>
-                            <button 
-                              onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ type: 'o365-licenses', id: license.id }); }} 
-                              className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 rounded-lg transition-colors"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  ))
+                    ))}
+                    <Pagination totalItems={filteredO365.length} />
+                  </>
                 ) : (
                   <div className="text-center py-12 bg-white dark:bg-slate-900 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800">
                     <Mail className="w-12 h-12 text-slate-200 mx-auto mb-4" />
@@ -1242,14 +1423,14 @@ export default function CustomerDetails() {
             {activeTab === 'selectCare' && (
               <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-6">
                 {/* Under Reparation Section */}
-                {(customer.selectCare?.filter(sc => sc.status === 'Under reparation') || []).length > 0 && (
+                {(paginate(filteredSelectCare).filter(sc => sc.status === 'Under reparation') || []).length > 0 && (
                   <div className="space-y-3">
                     <div className="flex items-center gap-2 px-2">
                       <Wrench className="w-4 h-4 text-amber-500" />
                       <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider">Under reparation</h3>
                     </div>
                     <div className="space-y-2">
-                      {customer.selectCare?.filter(sc => sc.status === 'Under reparation').map(sc => {
+                      {paginate(filteredSelectCare).filter(sc => sc.status === 'Under reparation').map(sc => {
                         const linkedUser = customer.users?.find(u => u.id === sc.userId);
                         return (
                           <div 
@@ -1332,7 +1513,7 @@ export default function CustomerDetails() {
                     <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider">Aktiva avtal</h3>
                   </div>
                   <div className="space-y-2">
-                    {(customer.selectCare?.filter(sc => sc.status !== 'Under reparation') || []).map(sc => {
+                    {(paginate(filteredSelectCare).filter(sc => sc.status !== 'Under reparation') || []).map(sc => {
                       const linkedUser = customer.users?.find(u => u.id === sc.userId);
                       const status = getExpirationStatus(sc.endDate);
                       return (
@@ -1453,6 +1634,7 @@ export default function CustomerDetails() {
                     })}
                   </div>
                 </div>
+                <Pagination totalItems={filteredSelectCare.length} />
               </motion.div>
             )}
 
@@ -1463,37 +1645,71 @@ export default function CustomerDetails() {
                     <h3 className="text-lg font-bold text-slate-900 dark:text-white">Avtalshantering</h3>
                     <p className="text-sm text-slate-500">Här listas alla aktiva och utgångna avtal för {customer.name}</p>
                   </div>
+                  <div className="flex p-1 bg-slate-100 dark:bg-slate-800 rounded-xl">
+                    {(['Alla', 'Kund', 'Leverantör'] as const).map((f) => (
+                      <button
+                        key={f}
+                        onClick={() => setContractFilter(f)}
+                        className={cn(
+                          "px-4 py-1.5 text-xs font-bold rounded-lg transition-all",
+                          contractFilter === f 
+                            ? "bg-white dark:bg-slate-700 text-primary shadow-sm" 
+                            : "text-slate-500 hover:text-slate-700"
+                        )}
+                      >
+                        {f === 'Alla' ? 'Alla' : f === 'Kund' ? 'Kundavtal' : 'Leverantörsavtal'}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
-                {contracts.length > 0 ? (
-                  <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left border-collapse">
-                        <thead>
-                          <tr className="border-b border-slate-100 dark:border-slate-800">
-                            <th className="py-4 px-6 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Typ</th>
-                            <th className="py-4 px-6 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Status</th>
-                            <th className="py-4 px-6 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Start</th>
-                            <th className="py-4 px-6 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Slut</th>
-                            <th className="py-4 px-6 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Period</th>
-                            <th className="py-4 px-6 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Åtgärder</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {contracts.map((contract) => {
-                            const status = getExpirationStatus(contract.endDate);
-                            return (
-                              <tr 
-                                key={contract.id}
-                                onClick={() => setSelectedSummary({ type: 'contract', item: contract })}
-                                className="border-b border-slate-50 dark:border-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer group"
-                              >
+                {filteredContracts.length > 0 ? (
+                  <>
+                    <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse">
+                          <thead>
+                            <tr className="border-b border-slate-100 dark:border-slate-800">
+                              <th className="py-4 px-6 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Typ</th>
+                              <th className="py-4 px-6 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Status</th>
+                              <th className="py-4 px-6 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Start</th>
+                              <th className="py-4 px-6 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Slut</th>
+                              <th className="py-4 px-6 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Period</th>
+                              <th className="py-4 px-6 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Åtgärder</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {paginate(filteredContracts).map((contract) => {
+                              const status = getExpirationStatus(contract.endDate);
+                              return (
+                                <tr 
+                                  key={contract.id}
+                                  onClick={() => setSelectedSummary({ type: 'contract', item: contract })}
+                                  className="border-b border-slate-50 dark:border-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer group"
+                                >
                                 <td className="py-4 px-6">
                                   <div className="flex items-center gap-3">
                                     <div className="p-2 bg-primary/10 rounded-lg">
                                       <FileText className="w-4 h-4 text-primary" />
                                     </div>
-                                    <span className="font-bold text-slate-900 dark:text-white">{contract.type}</span>
+                                    <div className="flex flex-col">
+                                      <div className="flex items-center gap-2">
+                                        <span className="font-bold text-slate-900 dark:text-white">{contract.type}</span>
+                                        {contract.contractCategory && (
+                                          <span className={cn(
+                                            "px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider",
+                                            contract.contractCategory === 'Kund' 
+                                              ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" 
+                                              : "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
+                                          )}>
+                                            {contract.contractCategory}
+                                          </span>
+                                        )}
+                                      </div>
+                                      {contract.company && (
+                                        <span className="text-[10px] text-slate-500 font-medium">{contract.company}</span>
+                                      )}
+                                    </div>
                                   </div>
                                 </td>
                                 <td className="py-4 px-6">
@@ -1537,7 +1753,9 @@ export default function CustomerDetails() {
                       </table>
                     </div>
                   </div>
-                ) : (
+                  <Pagination totalItems={filteredContracts.length} />
+                </>
+              ) : (
                   <div className="text-center py-20 bg-white dark:bg-slate-900 rounded-[32px] border border-dashed border-slate-200 dark:border-slate-800">
                     <div className="w-20 h-20 bg-slate-50 dark:bg-slate-800/50 rounded-full flex items-center justify-center mx-auto mb-4">
                       <FileText className="w-10 h-10 text-slate-200" />
@@ -1551,16 +1769,35 @@ export default function CustomerDetails() {
 
             {activeTab === 'drivingLogs' && (
               <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-4">
+                {/* Driving Log Admins Section */}
+                {customer?.users?.some(u => u.isDrivingLogAdmin === 1) && (
+                  <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center gap-4">
+                    <div className="w-10 h-10 bg-red-50 dark:bg-red-900/20 rounded-full flex items-center justify-center flex-shrink-0">
+                      <ShieldCheck className="w-5 h-5 text-red-600 dark:text-red-400" />
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest mb-0.5">Ansvariga för körjournaler</p>
+                      <div className="flex flex-wrap gap-2">
+                        {customer.users.filter(u => u.isDrivingLogAdmin === 1).map(u => (
+                          <span key={u.id} className="text-sm font-bold text-slate-900 dark:text-white">
+                            {u.firstName} {u.lastName}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
                   <div className="flex items-center justify-between mb-6">
                     <div>
                       <h3 className="text-lg font-bold text-slate-900 dark:text-white">Registrerade körjournaler</h3>
-                      <p className="text-sm text-slate-500">Totalt {drivingLogs.length} aktiva körjournaler för {customer.name}</p>
+                      <p className="text-sm text-slate-500">Totalt {filteredDrivingLogs.length} aktiva körjournaler för {customer.name}</p>
                     </div>
                     <div className="text-right">
                       <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest mb-1">Total månadskostnad</p>
                       <p className="text-xl font-black text-primary">
-                        {drivingLogs.reduce((sum, log) => sum + (log.monthlyFee || 0), 0).toLocaleString()} kr
+                        {filteredDrivingLogs.reduce((sum, log) => sum + (log.monthlyFee || 0), 0).toLocaleString()} kr
                       </p>
                     </div>
                   </div>
@@ -1579,9 +1816,13 @@ export default function CustomerDetails() {
                         </tr>
                       </thead>
                       <tbody>
-                        {drivingLogs.length > 0 ? (
-                          drivingLogs.map((log) => (
-                            <tr key={log.id} className="border-b border-slate-50 dark:border-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                        {filteredDrivingLogs.length > 0 ? (
+                          paginate(filteredDrivingLogs).map((log) => (
+                            <tr 
+                              key={log.id} 
+                              onClick={() => setSelectedSummary({ type: 'drivingLog', item: log })}
+                              className="border-b border-slate-50 dark:border-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer"
+                            >
                               <td className="py-3 px-4 font-mono text-sm font-bold text-primary uppercase">{log.regNo}</td>
                               <td className="py-3 px-4 text-sm text-slate-700 dark:text-slate-300 font-medium">{log.driverName}</td>
                               <td className="py-3 px-4 text-sm text-slate-500">{log.email}</td>
@@ -1618,6 +1859,7 @@ export default function CustomerDetails() {
                       </tbody>
                     </table>
                   </div>
+                  <Pagination totalItems={filteredDrivingLogs.length} />
                 </div>
               </motion.div>
             )}
@@ -1825,7 +2067,7 @@ export default function CustomerDetails() {
                 <div className="space-y-2 md:col-span-2">
                   <label className="text-sm font-bold text-slate-700 dark:text-slate-300">Tjänster</label>
                   <div className="flex flex-wrap gap-2">
-                    {['Telefoni', 'IT', 'Select Care', 'Körjournaler', 'Avtalshantering'].map(service => {
+                    {['Telefoni', 'IT', 'Select Care', 'Körjournaler', 'Avtalshantering', 'O365 licenser'].map(service => {
                       const currentServices = customerForm.services ? JSON.parse(customerForm.services) : [];
                       const isSelected = currentServices.includes(service);
                       return (
@@ -1941,10 +2183,6 @@ export default function CustomerDetails() {
                       <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Roll</p>
                       <p className="text-slate-900 dark:text-white font-semibold">{selectedSummary.item.role}</p>
                     </div>
-                    <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl space-y-1">
-                      <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Användar-ID</p>
-                      <p className="text-slate-900 dark:text-white font-semibold">#{selectedSummary.item.id}</p>
-                    </div>
                   </div>
 
                   {/* Linked Services Summary */}
@@ -1959,13 +2197,13 @@ export default function CustomerDetails() {
                           <div 
                             key={eq.id} 
                             onClick={() => setSelectedSummary({ type: 'equipment', item: eq })}
-                            className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl flex items-center justify-between hover:bg-primary/5 hover:border-primary/20 border border-transparent transition-all cursor-pointer group"
+                            className="p-3 bg-amber-50/50 dark:bg-amber-900/10 rounded-xl flex items-center justify-between border border-amber-100 dark:border-amber-900/30 hover:bg-amber-100/50 dark:hover:bg-amber-900/20 transition-all cursor-pointer group"
                           >
                             <div>
-                              <p className="text-sm font-bold text-slate-900 dark:text-white group-hover:text-primary transition-colors">{eq.brand} {eq.model}</p>
-                              <p className="text-[10px] text-slate-500">{eq.imei}</p>
+                              <p className="text-sm font-bold text-amber-600 dark:text-amber-400">{eq.brand} {eq.model}</p>
+                              <p className="text-[10px] text-amber-500">{eq.imei}</p>
                             </div>
-                            <Smartphone className="w-4 h-4 text-slate-400 group-hover:text-primary transition-colors" />
+                            <Smartphone className="w-4 h-4 text-amber-400" />
                           </div>
                         ))
                       ) : (
@@ -1981,13 +2219,13 @@ export default function CustomerDetails() {
                           <div 
                             key={it.id} 
                             onClick={() => setSelectedSummary({ type: 'it', item: it })}
-                            className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl flex items-center justify-between hover:bg-primary/5 hover:border-primary/20 border border-transparent transition-all cursor-pointer group"
+                            className="p-3 bg-violet-50/50 dark:bg-violet-900/10 rounded-xl flex items-center justify-between border border-violet-100 dark:border-violet-900/30 hover:bg-violet-100/50 dark:hover:bg-violet-900/20 transition-all cursor-pointer group"
                           >
                             <div>
-                              <p className="text-sm font-bold text-slate-900 dark:text-white group-hover:text-primary transition-colors">{it.deviceName}</p>
-                              <p className="text-[10px] text-slate-500">{it.brand} {it.model}</p>
+                              <p className="text-sm font-bold text-violet-600 dark:text-violet-400">{it.deviceName}</p>
+                              <p className="text-[10px] text-violet-500">{it.brand} {it.model}</p>
                             </div>
-                            <Monitor className="w-4 h-4 text-slate-400 group-hover:text-primary transition-colors" />
+                            <Monitor className="w-4 h-4 text-violet-400" />
                           </div>
                         ))
                       ) : (
@@ -2119,6 +2357,10 @@ export default function CustomerDetails() {
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
+                    <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl space-y-1">
+                      <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Select Nr</p>
+                      <p className="text-slate-900 dark:text-white font-semibold">{selectedSummary.item.selectNr || '-'}</p>
+                    </div>
                     <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl space-y-1">
                       <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Serienummer</p>
                       <p className="text-slate-900 dark:text-white font-semibold">{selectedSummary.item.serialNumber}</p>
@@ -2260,6 +2502,10 @@ export default function CustomerDetails() {
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl space-y-1">
+                      <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Select Nr</p>
+                      <p className="text-slate-900 dark:text-white font-semibold">{selectedSummary.item.selectNr || '-'}</p>
+                    </div>
+                    <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl space-y-1">
                       <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">IMEI / Serie</p>
                       <p className="text-slate-900 dark:text-white font-semibold">{selectedSummary.item.imei}</p>
                     </div>
@@ -2364,6 +2610,10 @@ export default function CustomerDetails() {
                     <div className="p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl space-y-1 border border-indigo-100 dark:border-indigo-900/30">
                       <p className="text-[10px] text-indigo-600 dark:text-indigo-400 uppercase font-bold tracking-widest">Månadsavgift</p>
                       <p className="text-indigo-600 dark:text-indigo-400 font-bold text-lg">{selectedSummary.item.monthlyFee.toLocaleString()} kr/mån</p>
+                    </div>
+                    <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl space-y-1">
+                      <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Select Nr</p>
+                      <p className="text-slate-900 dark:text-white font-semibold">{selectedSummary.item.selectNr || '-'}</p>
                     </div>
                     <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl space-y-1">
                       <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">IMEI</p>
@@ -2499,10 +2749,32 @@ export default function CustomerDetails() {
                       <FileText className="w-8 h-8 text-primary" />
                     </div>
                     <div>
-                      <h3 className="text-xl font-bold text-slate-900 dark:text-white">{selectedSummary.item.type}</h3>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-xl font-bold text-slate-900 dark:text-white">{selectedSummary.item.type}</h3>
+                        {selectedSummary.item.contractCategory && (
+                          <span className={cn(
+                            "px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border",
+                            selectedSummary.item.contractCategory === 'Kund' 
+                              ? "text-blue-600 bg-blue-50 border-blue-100 dark:bg-blue-900/30 dark:border-blue-800" 
+                              : "text-orange-600 bg-orange-50 border-orange-100 dark:bg-orange-900/30 dark:border-orange-800"
+                          )}>
+                            {selectedSummary.item.contractCategory === 'Kund' ? 'Kundavtal' : 'Leverantörsavtal'}
+                          </span>
+                        )}
+                      </div>
+                      {selectedSummary.item.company && (
+                        <p className="text-primary font-bold text-sm">{selectedSummary.item.company}</p>
+                      )}
                       <p className="text-slate-500 font-medium">Bindningstid: {selectedSummary.item.contractPeriod} månader</p>
                     </div>
                   </div>
+
+                  {selectedSummary.item.company && (
+                    <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl space-y-1">
+                      <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Företag</p>
+                      <p className="text-slate-900 dark:text-white font-semibold">{selectedSummary.item.company}</p>
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-2 gap-4">
                     <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl space-y-1">
@@ -2598,7 +2870,7 @@ export default function CustomerDetails() {
                   activeTab === 'equipment' ? 'utrustning' : 
                   activeTab === 'it' ? 'utrustning' :
                   activeTab === 'o365' ? 'O365 licens' :
-                  'Select Care avtal'
+                  'ett avtal'
                 }
               </h2>
               <button onClick={() => { setIsModalOpen(false); setEditingItem(null); }} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors">
@@ -2637,15 +2909,27 @@ export default function CustomerDetails() {
                       <input required className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary" value={userForm.office} onChange={e => setUserForm({...userForm, office: e.target.value})} />
                     </div>
                   </div>
-                  <div className="flex items-center gap-3 pt-2">
-                    <input 
-                      type="checkbox" 
-                      id="isAuthorizedBuyer"
-                      className="w-5 h-5 rounded border-slate-300 text-primary focus:ring-primary"
-                      checked={userForm.isAuthorizedBuyer === 1}
-                      onChange={e => setUserForm({...userForm, isAuthorizedBuyer: e.target.checked ? 1 : 0})}
-                    />
-                    <label htmlFor="isAuthorizedBuyer" className="text-sm font-bold text-slate-700 dark:text-slate-300 cursor-pointer">Behörig beställare</label>
+                  <div className="flex flex-col sm:flex-row gap-4 pt-2">
+                    <div className="flex items-center gap-3">
+                      <input 
+                        type="checkbox" 
+                        id="isAuthorizedBuyer"
+                        className="w-5 h-5 rounded border-slate-300 text-primary focus:ring-primary"
+                        checked={userForm.isAuthorizedBuyer === 1}
+                        onChange={e => setUserForm({...userForm, isAuthorizedBuyer: e.target.checked ? 1 : 0})}
+                      />
+                      <label htmlFor="isAuthorizedBuyer" className="text-sm font-bold text-slate-700 dark:text-slate-300 cursor-pointer">Behörig beställare</label>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <input 
+                        type="checkbox" 
+                        id="isDrivingLogAdmin"
+                        className="w-5 h-5 rounded border-slate-300 text-primary focus:ring-primary"
+                        checked={userForm.isDrivingLogAdmin === 1}
+                        onChange={e => setUserForm({...userForm, isDrivingLogAdmin: e.target.checked ? 1 : 0})}
+                      />
+                      <label htmlFor="isDrivingLogAdmin" className="text-sm font-bold text-slate-700 dark:text-slate-300 cursor-pointer">Admin för körjournaler</label>
+                    </div>
                   </div>
                   <button type="submit" className="w-full py-3 bg-primary text-primary-foreground font-bold rounded-xl mt-4">Spara användare</button>
                 </form>
@@ -2766,9 +3050,15 @@ export default function CustomerDetails() {
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-500 uppercase">Select Nr</label>
+                      <input className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary" value={activeTab === 'equipment' ? (equipmentForm.selectNr || '') : (scForm.selectNr || '')} onChange={e => activeTab === 'equipment' ? setEquipmentForm({...equipmentForm, selectNr: e.target.value}) : setScForm({...scForm, selectNr: e.target.value})} />
+                    </div>
+                    <div className="space-y-1">
                       <label className="text-xs font-bold text-slate-500 uppercase">IMEI / Serienummer</label>
                       <input required className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary" value={activeTab === 'equipment' ? equipmentForm.imei : scForm.imei} onChange={e => activeTab === 'equipment' ? setEquipmentForm({...equipmentForm, imei: e.target.value}) : setScForm({...scForm, imei: e.target.value})} />
                     </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
                       <label className="text-xs font-bold text-slate-500 uppercase">Kollinummer</label>
                       <input className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary" value={activeTab === 'equipment' ? equipmentForm.trackingNumber : scForm.trackingNumber} onChange={e => activeTab === 'equipment' ? setEquipmentForm({...equipmentForm, trackingNumber: e.target.value}) : setScForm({...scForm, trackingNumber: e.target.value})} />
@@ -2986,6 +3276,16 @@ export default function CustomerDetails() {
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-500 uppercase">Select Nr</label>
+                      <input className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary" value={itForm.selectNr || ''} onChange={e => setItForm({...itForm, selectNr: e.target.value})} />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-500 uppercase">Serienummer</label>
+                      <input required className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary" value={itForm.serialNumber} onChange={e => setItForm({...itForm, serialNumber: e.target.value})} />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
                       <label className="text-xs font-bold text-slate-500 uppercase">Minne</label>
                       <div className="flex gap-2">
                         <select 
@@ -3008,15 +3308,11 @@ export default function CustomerDetails() {
                       </div>
                     </div>
                     <div className="space-y-1">
-                      <label className="text-xs font-bold text-slate-500 uppercase">Serienummer</label>
-                      <input required className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary" value={itForm.serialNumber} onChange={e => setItForm({...itForm, serialNumber: e.target.value})} />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1">
                       <label className="text-xs font-bold text-slate-500 uppercase">Kollinummer</label>
                       <input className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary" value={itForm.trackingNumber} onChange={e => setItForm({...itForm, trackingNumber: e.target.value})} />
                     </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
                       <label className="text-xs font-bold text-slate-500 uppercase">Inköpsställe</label>
                       <div className="flex gap-2">
@@ -3040,26 +3336,24 @@ export default function CustomerDetails() {
                         <button type="button" onClick={() => handleAddITPurchasePlace(newPurchasePlace)} className="px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-lg text-xs font-bold">Lägg till</button>
                       </div>
                     </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
                       <label className="text-xs font-bold text-slate-500 uppercase">Ordernummer</label>
                       <input required className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary" value={itForm.orderNumber} onChange={e => setItForm({...itForm, orderNumber: e.target.value})} />
                     </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
                       <label className="text-xs font-bold text-slate-500 uppercase">Inköpsdatum</label>
                       <input type="date" required className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary" value={itForm.purchaseDate} onChange={e => setItForm({...itForm, purchaseDate: e.target.value})} />
                     </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
                       <label className="text-xs font-bold text-slate-500 uppercase">Inköpspris</label>
                       <input type="number" required className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary" value={itForm.purchasePrice} onChange={e => setItForm({...itForm, purchasePrice: Number(e.target.value)})} />
                     </div>
-                    <div className="space-y-1">
-                      <label className="text-xs font-bold text-slate-500 uppercase">Kundpris</label>
-                      <input type="number" required className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary" value={itForm.customerPrice} onChange={e => setItForm({...itForm, customerPrice: Number(e.target.value)})} />
-                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Kundpris</label>
+                    <input type="number" required className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary" value={itForm.customerPrice} onChange={e => setItForm({...itForm, customerPrice: Number(e.target.value)})} />
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-bold text-slate-500 uppercase">Koppla till användare</label>
@@ -3217,21 +3511,56 @@ export default function CustomerDetails() {
 
               {activeTab === 'contracts' && (
                 <form onSubmit={handleAddContract} className="space-y-4">
-                  {user?.isAdmin === 1 && (
-                    <div className="space-y-1">
-                      <label className="text-xs font-bold text-slate-500 uppercase">Säljare (Statistik)</label>
+                  <div className="flex p-1 bg-slate-100 dark:bg-slate-800 rounded-xl">
+                    <button
+                      type="button"
+                      onClick={() => setContractForm({ ...contractForm, contractCategory: 'Kund' })}
+                      className={cn(
+                        "flex-1 py-2 text-xs font-bold rounded-lg transition-all",
+                        contractForm.contractCategory === 'Kund' 
+                          ? "bg-blue-600 text-white shadow-lg shadow-blue-600/20" 
+                          : "text-slate-500 hover:text-slate-700"
+                      )}
+                    >
+                      Kundavtal
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setContractForm({ ...contractForm, contractCategory: 'Leverantör' })}
+                      className={cn(
+                        "flex-1 py-2 text-xs font-bold rounded-lg transition-all",
+                        contractForm.contractCategory === 'Leverantör' 
+                          ? "bg-orange-600 text-white shadow-lg shadow-orange-600/20" 
+                          : "text-slate-500 hover:text-slate-700"
+                      )}
+                    >
+                      Leverantörsavtal
+                    </button>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Företag</label>
+                    <div className="flex gap-2">
                       <select 
-                        className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary" 
-                        value={contractForm.sellerId} 
-                        onChange={e => setContractForm({...contractForm, sellerId: Number(e.target.value)})}
+                        className="flex-1 px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:ring-2 focus:ring-primary"
+                        value={contractForm.company}
+                        onChange={e => setContractForm({...contractForm, company: e.target.value})}
                       >
-                        <option value={user.id}>Mig själv ({user.firstName})</option>
-                        {sellers.map(s => (
-                          <option key={s.id} value={s.id}>{s.firstName} {s.lastName} ({s.role})</option>
-                        ))}
+                        <option value="">Välj företag</option>
+                        {contractCompanies.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
                       </select>
                     </div>
-                  )}
+                    <div className="flex gap-2 mt-2">
+                      <input 
+                        placeholder="Nytt företag..." 
+                        className="flex-1 px-4 py-1 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+                        value={newContractCompany}
+                        onChange={e => setNewContractCompany(e.target.value)}
+                      />
+                      <button type="button" onClick={handleAddContractCompany} className="px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-lg text-xs font-bold">Lägg till</button>
+                    </div>
+                  </div>
+
                   <div className="space-y-1">
                     <label className="text-xs font-bold text-slate-500 uppercase">Avtalstyp</label>
                     <select 

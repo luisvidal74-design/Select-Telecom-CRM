@@ -56,11 +56,12 @@ export default function Calendar() {
   }, [user]);
 
   const fetchData = async () => {
+    if (!user) return;
     try {
       const [eventsRes, contractsRes, scRes] = await Promise.all([
-        fetch(`/api/calendar-events?sellerId=${user?.id}`),
-        fetch(`/api/contracts?sellerId=${user?.id}`),
-        fetch(`/api/select-care?sellerId=${user?.id}`)
+        fetch(`/api/calendar-events?sellerId=${user.id}`),
+        fetch(`/api/contracts?userId=${user.id}&isAdmin=${user.isAdmin}&role=${user.role || ''}&sellerId=${user.id}`),
+        fetch(`/api/select-care?sellerId=${user.id}`)
       ]);
 
       const [eventsData, contractsData, scData] = await Promise.all([
@@ -69,9 +70,9 @@ export default function Calendar() {
         scRes.json()
       ]);
 
-      setEvents(eventsData);
-      setContracts(contractsData);
-      setSelectCare(scData);
+      setEvents(Array.isArray(eventsData) ? eventsData : []);
+      setContracts(Array.isArray(contractsData) ? contractsData : []);
+      setSelectCare(Array.isArray(scData) ? scData : []);
     } catch (error) {
       console.error('Failed to fetch calendar data:', error);
     }

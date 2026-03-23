@@ -18,7 +18,7 @@ import {
   FileText,
   Calendar as CalendarIcon
 } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { cn } from '../lib/utils';
 import NotificationModal from './NotificationModal';
 import { SelectCare } from '../types';
@@ -31,10 +31,56 @@ export default function Layout() {
   const navigate = useNavigate();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
+  const [isNewsPopoverOpen, setIsNewsPopoverOpen] = useState(false);
+  const newsPopoverRef = useRef<HTMLDivElement>(null);
   const [expiringAgreements, setExpiringAgreements] = useState<(SelectCare & { customerName: string })[]>([]);
   const [expiringContracts, setExpiringContracts] = useState<(any & { customerName: string })[]>([]);
   const [pendingUsersCount, setPendingUsersCount] = useState(0);
   const [newTicketsCount, setNewTicketsCount] = useState(0);
+  const [unreadNewsCount, setUnreadNewsCount] = useState(0);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (newsPopoverRef.current && !newsPopoverRef.current.contains(event.target as Node)) {
+        setIsNewsPopoverOpen(false);
+      }
+    };
+
+    if (isNewsPopoverOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    } else {
+      document.removeEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isNewsPopoverOpen]);
+
+  useEffect(() => {
+    const fetchUnreadNews = async () => {
+      if (!user) return;
+      try {
+        const res = await fetch('/api/news');
+        const news = await res.json();
+        const lastRead = user.lastReadNewsTimestamp ? new Date(user.lastReadNewsTimestamp) : new Date(0);
+        const unread = news.filter((item: any) => new Date(item.createdAt) > lastRead);
+        setUnreadNewsCount(unread.length);
+      } catch (error) {
+        console.error('Failed to fetch unread news:', error);
+      }
+    };
+    fetchUnreadNews();
+    const interval = setInterval(fetchUnreadNews, 2 * 60 * 1000); // Check every 2 minutes
+    
+    const handleRefresh = () => fetchUnreadNews();
+    window.addEventListener('refresh-news-count', handleRefresh);
+    
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('refresh-news-count', handleRefresh);
+    };
+  }, [user]);
 
   useEffect(() => {
     const fetchExpiring = async () => {
@@ -262,6 +308,43 @@ export default function Layout() {
                 </span>
               </div>
             </div>
+            
+            {/* News Notification Icon */}
+            {unreadNewsCount > 0 && (
+              <div className="relative" ref={newsPopoverRef}>
+                <button 
+                  onClick={() => setIsNewsPopoverOpen(!isNewsPopoverOpen)}
+                  className="relative p-2 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-all group"
+                >
+                  <Bell className="w-5 h-5 group-hover:text-blue-600 transition-colors" />
+                  <span className="absolute top-1.5 right-1.5 w-4 h-4 bg-red-500 text-white text-[10px] font-bold flex items-center justify-center rounded-full ring-2 ring-white dark:ring-slate-900 animate-bounce">
+                    {unreadNewsCount}
+                  </span>
+                </button>
+                
+                {isNewsPopoverOpen && (
+                  <div 
+                    onClick={() => {
+                      setIsNewsPopoverOpen(false);
+                      navigate('/nyheter');
+                    }}
+                    className="absolute top-full mt-2 right-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl p-4 z-50 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition-all min-w-[160px] animate-in fade-in slide-in-from-top-2"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center">
+                        <Bell className="w-4 h-4 text-blue-600" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-slate-900 dark:text-white whitespace-nowrap">
+                          {unreadNewsCount === 1 ? '1 nyhet' : `${unreadNewsCount} nya nyheter`}
+                        </p>
+                        <p className="text-[10px] text-blue-600 font-medium">Klicka för att läsa</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             <Link to="/profil" className="flex items-center gap-3 group">
               <div className="text-right hidden sm:block">
