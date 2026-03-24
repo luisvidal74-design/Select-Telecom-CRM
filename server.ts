@@ -444,7 +444,7 @@ async function startServer() {
   const app = express();
   const server = http.createServer(app);
   const wss = new WebSocketServer({ server });
-  const PORT = 3000;
+  const PORT = process.env.PORT || 3000;
 
   const activeUsers = new Map<WebSocket, any>();
 
@@ -2209,9 +2209,13 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    app.use(express.static(path.join(__dirname, "dist")));
+    const distPath = path.join(__dirname, "dist");
+    const isCompiled = __dirname.endsWith("dist");
+    const finalDistPath = isCompiled ? __dirname : distPath;
+
+    app.use(express.static(finalDistPath));
     app.get("*", (req, res) => {
-      res.sendFile(path.join(__dirname, "dist", "index.html"));
+      res.sendFile(path.join(finalDistPath, "index.html"));
     });
   }
 
