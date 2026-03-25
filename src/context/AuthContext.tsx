@@ -1,11 +1,14 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User } from '../types';
+import { auth, db } from '../lib/firebase';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
   login: (userData: User) => void;
-  logout: () => void;
+  logout: () => Promise<void>;
   updateUser: (user: User) => void;
 }
 
@@ -16,15 +19,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const savedUser = localStorage.getItem('select_telecom_user');
-    if (savedUser) {
-      try {
-        setUser(JSON.parse(savedUser));
-      } catch (e) {
-        localStorage.removeItem('select_telecom_user');
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        try {
+          const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+          if (userDoc.exists()) {
+            const userData = { id: userDoc.id, ...userDoc.data() } as User;
+            if (userData.status === 'approved') {
+              setUser(userData);
+            } else {
+              await signOut(auth);
+              setUser(null);
+            }
+          } else {
+            // Check if there's a legacy user in localStorage (for migration)
+            const savedUser = localStorage.getItem('select_telecom_user');
+            if (savedUser) {
+              setUser(JSON.parse(savedUser));
+            } else {
+              setUser(null);
+            }
+          }
+        } catch (e) {
+          console.error('Auth error:', e);
+          setUser(null);
+        }
+      } else {
+        setUser(null);
       }
-    }
-    setLoading(false);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
   }, []);
 
   const login = (userData: User) => {
@@ -32,7 +58,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem('select_telecom_user', JSON.stringify(userData));
   };
 
-  const logout = () => {
+  const logout = async () => {
+    await signOut(auth);
     setUser(null);
     localStorage.removeItem('select_telecom_user');
   };

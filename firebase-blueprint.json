@@ -1,0 +1,176 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Internal staff user",
+      "type": "object",
+      "properties": {
+        "firstName": { "type": "string" },
+        "lastName": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "password": { "type": "string" },
+        "phone": { "type": "string" },
+        "role": { "type": "string" },
+        "profilePic": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "isAdmin": { "type": "boolean" },
+        "isSupport": { "type": "boolean" },
+        "office": { "type": "string" },
+        "lastReadNewsTimestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "firstName", "lastName"]
+    },
+    "Customer": {
+      "title": "Customer",
+      "description": "Client company",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "orgNumber": { "type": "string" },
+        "address": { "type": "string" },
+        "city": { "type": "string" },
+        "zipCode": { "type": "string" },
+        "contactPerson": { "type": "string" },
+        "contactPhone": { "type": "string" },
+        "contactEmail": { "type": "string", "format": "email" },
+        "responsibleSeller": { "type": "string" },
+        "website": { "type": "string" },
+        "services": { "type": "string" }
+      },
+      "required": ["name"]
+    },
+    "CustomerUser": {
+      "title": "CustomerUser",
+      "description": "Contact person at a customer company",
+      "type": "object",
+      "properties": {
+        "customerId": { "type": "string" },
+        "firstName": { "type": "string" },
+        "lastName": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "phone": { "type": "string" },
+        "role": { "type": "string" },
+        "office": { "type": "string" },
+        "isAuthorizedBuyer": { "type": "boolean" },
+        "isDrivingLogAdmin": { "type": "boolean" }
+      },
+      "required": ["customerId", "firstName", "lastName", "email"]
+    },
+    "Equipment": {
+      "title": "Equipment",
+      "description": "Mobile equipment",
+      "type": "object",
+      "properties": {
+        "customerId": { "type": "string" },
+        "userId": { "type": "string" },
+        "sellerId": { "type": "string" },
+        "brand": { "type": "string" },
+        "model": { "type": "string" },
+        "color": { "type": "string" },
+        "memory": { "type": "string" },
+        "imei": { "type": "string" },
+        "purchasePlace": { "type": "string" },
+        "orderNumber": { "type": "string" },
+        "purchaseDate": { "type": "string" },
+        "purchasePrice": { "type": "number" },
+        "customerPrice": { "type": "number" },
+        "trackingNumber": { "type": "string" },
+        "selectNr": { "type": "string" },
+        "notes": { "type": "string" }
+      }
+    },
+    "SelectCare": {
+      "title": "SelectCare",
+      "description": "Select Care contract",
+      "type": "object",
+      "properties": {
+        "customerId": { "type": "string" },
+        "userId": { "type": "string" },
+        "sellerId": { "type": "string" },
+        "brand": { "type": "string" },
+        "model": { "type": "string" },
+        "color": { "type": "string" },
+        "memory": { "type": "string" },
+        "imei": { "type": "string" },
+        "purchasePlace": { "type": "string" },
+        "orderNumber": { "type": "string" },
+        "purchaseDate": { "type": "string" },
+        "purchasePrice": { "number": "number" },
+        "monthlyFee": { "type": "number" },
+        "contractPeriod": { "type": "integer" },
+        "endDate": { "type": "string" },
+        "siemensContractNumber": { "type": "string" },
+        "trackingNumber": { "type": "string" },
+        "selectNr": { "type": "string" },
+        "status": { "type": "string", "enum": ["Aktiv", "Avslutad", "Pausad"] }
+      }
+    },
+    "News": {
+      "title": "News",
+      "description": "News post",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "authorId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "imageSize": { "type": "string", "enum": ["small", "medium", "large"] }
+      }
+    },
+    "SupportTicket": {
+      "title": "SupportTicket",
+      "description": "Support ticket",
+      "type": "object",
+      "properties": {
+        "ticketNumber": { "type": "string" },
+        "customerId": { "type": "string" },
+        "selectCareId": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "status": { "type": "string" },
+        "priority": { "type": "string" },
+        "createdBy": { "type": "string" },
+        "assignedTo": { "type": "string" },
+        "isRead": { "type": "boolean" },
+        "isReadByAdmin": { "type": "boolean" },
+        "isReadByCreator": { "type": "boolean" },
+        "isTagged": { "type": "boolean" },
+        "taggedUserId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Internal users"
+    },
+    "/customers/{customerId}": {
+      "schema": "Customer",
+      "description": "Customer companies"
+    },
+    "/customer_users/{userId}": {
+      "schema": "CustomerUser",
+      "description": "Customer contact persons"
+    },
+    "/equipment/{equipmentId}": {
+      "schema": "Equipment",
+      "description": "Mobile equipment"
+    },
+    "/select_care/{careId}": {
+      "schema": "SelectCare",
+      "description": "Select Care contracts"
+    },
+    "/news/{newsId}": {
+      "schema": "News",
+      "description": "News posts"
+    },
+    "/support_tickets/{ticketId}": {
+      "schema": "SupportTicket",
+      "description": "Support tickets"
+    }
+  }
+}

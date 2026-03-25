@@ -1,0 +1,84 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true ||
+         request.auth.token.email == "luisvidal74@gmail.com");
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Users collection
+    match /users/{userId} {
+      allow read: if true; // Allowed for stats API (server is unauthenticated)
+      allow create: if true; // Allowed for registration
+      allow update: if isAuthenticated() && (isOwner(userId) || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    // Customers collection
+    match /customers/{customerId} {
+      allow read: if true; // Allowed for stats API
+      allow write: if isAuthenticated();
+    }
+
+    // Equipment collection
+    match /equipment/{equipmentId} {
+      allow read: if true; // Allowed for stats API
+      allow write: if isAuthenticated();
+    }
+
+    // Select Care collection
+    match /select_care/{careId} {
+      allow read: if true; // Allowed for stats API
+      allow write: if isAuthenticated();
+    }
+
+    // News collection
+    match /news/{newsId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Support Tickets collection
+    match /support_tickets/{ticketId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    // Other collections
+    match /brands/{id} { allow read: if true; allow write: if isAdmin(); }
+    match /models/{id} { allow read: if true; allow write: if isAdmin(); }
+    match /colors/{id} { allow read: if true; allow write: if isAdmin(); }
+    match /memories/{id} { allow read: if true; allow write: if isAdmin(); }
+    match /it_brands/{id} { allow read: if true; allow write: if isAdmin(); }
+    match /it_models/{id} { allow read: if true; allow write: if isAdmin(); }
+    match /it_memory/{id} { allow read: if true; allow write: if isAdmin(); }
+    match /it_purchase_places/{id} { allow read: if true; allow write: if isAdmin(); }
+    match /it_equipment/{id} { allow read: if true; allow write: if isAuthenticated(); }
+    match /o365_license_types/{id} { allow read: if true; allow write: if isAdmin(); }
+    match /o365_licenses/{id} { allow read: if true; allow write: if isAuthenticated(); }
+    match /driving_logs/{id} { allow read: if true; allow write: if isAuthenticated(); }
+    match /contracts/{id} { allow read: if true; allow write: if isAuthenticated(); }
+    match /contract_files/{id} { allow read: if true; allow write: if isAuthenticated(); }
+    match /contract_companies/{id} { allow read: if true; allow write: if isAuthenticated(); }
+    match /calendar_events/{id} { allow read: if true; allow write: if isAuthenticated(); }
+    match /select_care_logs/{id} { allow read: if true; allow write: if isAuthenticated(); }
+    match /select_care_history/{id} { allow read: if true; allow write: if isAuthenticated(); }
+    match /support_ticket_logs/{id} { allow read: if true; allow write: if isAuthenticated(); }
+    match /customer_users/{id} { allow read: if true; allow write: if isAuthenticated(); }
+
+    // Default deny
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}
